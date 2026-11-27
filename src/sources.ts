@@ -20,12 +20,24 @@ export function defaultSources(configDir: string): SourceSettings {
 	return { vaultFolders: [`${configDir}/fonts`, IMPORT_FOLDER], deviceFolders: [], systemFonts: true };
 }
 
-export const SOURCE_LABEL: Record<Source, string> = {
-	google: 'Google Fonts',
-	vault: 'Vault',
-	folder: 'This device only',
-	system: 'Installed, this device only',
-};
+/** Fonts that live only on this device and do not sync. */
+export const deviceOnly = (f: FontInfo) => f.source === 'folder' || f.source === 'system';
+
+/** The concrete source the user set up: "Vault: fonts", "Folder: …\\Fonts", "Imported", "System fonts". */
+export function sourceLabel(f: FontInfo, imported: string[]): string {
+	switch (f.source ?? 'google') {
+		case 'google': return 'Google Fonts';
+		case 'system': return 'System fonts';
+		case 'vault': return f.files?.length && f.files.every((x) => imported.includes(x.path)) ? 'Imported' : `Vault: ${f.origin ?? ''}`;
+		default: return `Folder: ${shortPath(f.origin ?? '')}`;
+	}
+}
+
+/** Last two parts of a long path, e.g. "…\\Design\\Fonts". */
+function shortPath(p: string): string {
+	const parts = p.split(/[\\/]+/).filter(Boolean);
+	return parts.length > 3 ? `…${p.includes('\\') ? '\\' : '/'}${parts.slice(-2).join(p.includes('\\') ? '\\' : '/')}` : p;
+}
 
 interface Node {
 	fs: typeof import('fs');
@@ -56,7 +68,7 @@ interface Found {
 }
 
 /** Groups faces into families. Scripts come from the regular face, or any face that has them. */
-function group(found: Found[], source: Source): FontInfo[] {
+function group(found: Found[], source: Source, origin?: string): FontInfo[] {
 	const by = new Map<string, Found[]>();
 	for (const f of found) by.set(f.meta.family, [...(by.get(f.meta.family) ?? []), f]);
 	return [...by.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([family, list]) => {
@@ -72,6 +84,7 @@ function group(found: Found[], source: Source): FontInfo[] {
 			weights: weights.length ? weights : uniq(true),
 			italics: uniq(true),
 			source,
+			origin,
 			files: list.map((f): LocalFile => ({ path: f.path, weight: f.meta.weight, italic: f.meta.italic })),
 			unknownScripts: !scripts,
 		};
@@ -95,8 +108,14 @@ export async function scanVault(app: App, folders: string[]): Promise<FontInfo[]
 		}
 		for (const sub of list.folders) await walk(sub);
 	};
-	for (const f of folders) await walk(normalizePath(f));
-	return group(found, 'vault');
+	// One entry per configured folder, so the picker can say which folder a font is in.
+	const out: FontInfo[] = [];
+	for (const f of folders) {
+		found.length = 0;
+		await walk(normalizePath(f));
+		out.push(...group(found, 'vault', normalizePath(f)));
+	}
+	return out;
 }
 
 /** Font files in folders outside the vault. Desktop only; reads just the tables it needs. */
@@ -134,8 +153,17 @@ export async function scanDeviceFolders(dirs: string[], source: Source = 'folder
 			}
 		}
 	};
-	for (const d of dirs) await walk(d, 0);
-	return group(found, source);
+	if (source === 'system') {
+		for (const d of dirs) await walk(d, 0);
+		return group(found, source);
+	}
+	const out: FontInfo[] = [];
+	for (const d of dirs) {
+		found.length = 0;
+		await walk(d, 0);
+		out.push(...group(found, source, d));
+	}
+	return out;
 }
 
 interface LocalFontData {

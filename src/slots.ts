@@ -73,6 +73,8 @@ export interface FontInfo {
 	italics: number[];
 	/** Unset means Google. */
 	source?: Source;
+	/** The configured vault or device folder a local font was found in. */
+	origin?: string;
 	files?: LocalFile[];
 	/** WOFF2 files whose scripts could not be read yet. */
 	unknownScripts?: boolean;

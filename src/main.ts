@@ -1,4 +1,4 @@
-import { Notice, Plugin, getLanguage, normalizePath } from 'obsidian';
+import { Notice, Plugin, getLanguage, normalizePath, requestUrl } from 'obsidian';
 import { BodyFonts } from './apply';
 import { loadCatalog } from './catalog';
 import { FaceSet, FamilyFiles, PreviewFonts, downloadBlocks, fetchBlocks, tuple } from './fonts';
@@ -17,6 +17,8 @@ interface Data {
 	files: Record<string, FamilyFiles>;
 	previewCollapsed?: boolean;
 	sources?: SourceSettings;
+	/** Vault paths of files copied in with Import, so the picker can label them "Imported". */
+	imported?: string[];
 }
 
 export default class FontTailorPlugin extends Plugin {
@@ -113,7 +115,7 @@ export default class FontTailorPlugin extends Plugin {
 		let changed = false;
 		for (const f of all) {
 			const used = this.data.fonts[f.family];
-			if (used && used.source === f.source && JSON.stringify(used) !== JSON.stringify(f)) {
+			if (used && used.source === f.source && (used.origin ?? f.origin) === f.origin && JSON.stringify(used) !== JSON.stringify(f)) {
 				this.data.fonts[f.family] = f;
 				changed = true;
 			}
@@ -139,11 +141,13 @@ export default class FontTailorPlugin extends Plugin {
 				await readFontFile(async (o, l) => new Uint8Array(buf, o, Math.max(0, Math.min(l, buf.byteLength - o))), file.name);
 				if (await adapter.exists(target)) throw new Error('a file with this name is already there');
 				await adapter.writeBinary(target, buf);
+				this.data.imported = [...(this.data.imported ?? []), target];
 				n++;
 			} catch (e) {
 				new Notice(`Skipped ${file.name}: ${e instanceof Error ? e.message : String(e)}`);
 			}
 		}
+		await this.saveData(this.data);
 		if (!this.sources.vaultFolders.includes(IMPORT_FOLDER)) await this.setSources({ ...this.sources, vaultFolders: [...this.sources.vaultFolders, IMPORT_FOLDER] });
 		else await this.getLocalFonts(true);
 		this.onChange?.();
@@ -156,6 +160,41 @@ export default class FontTailorPlugin extends Plugin {
 			src: info.source === 'vault' ? `url("${this.app.vault.adapter.getResourcePath(file.path)}")` : this.readDeviceFile(file.path),
 			d: { style: file.italic ? 'italic' : 'normal', weight: String(file.weight), range: '' },
 		}));
+	}
+
+	/** Bytes on disk per downloaded Google family. */
+	async diskSizes(): Promise<Map<string, number>> {
+		const sizes = new Map<string, number>();
+		for (const [family, files] of Object.entries(this.data.files)) {
+			let total = 0;
+			for (const file of new Set(files.faces.map((f) => f.file))) total += (await this.app.vault.adapter.stat(file))?.size ?? 0;
+			sizes.set(family, total);
+		}
+		return sizes;
+	}
+
+	private estimates = new Map<string, Promise<number>>();
+
+	/** Bytes that using this Google style would download now (files already on disk count as 0). */
+	estimate(family: string, tuples: string[]): Promise<number> {
+		const scripts = this.scripts;
+		const key = `${family}|${tuples.join(';')}|${scripts.join(',')}`;
+		let p = this.estimates.get(key);
+		if (!p) {
+			p = (async () => {
+				const have = new Set((this.data.files[family]?.faces ?? []).map((f) => f.file.split('/').pop()));
+				const blocks = (await fetchBlocks(family, tuples)).filter((b) => keepsBlock(b.label, scripts) && !have.has(b.url.split('/').pop()));
+				let total = 0;
+				for (const url of new Set(blocks.map((b) => b.url))) {
+					const res = await requestUrl({ url, method: 'HEAD' });
+					total += Number(res.headers['content-length'] ?? 0);
+				}
+				return total;
+			})();
+			p.catch(() => this.estimates.delete(key));
+			this.estimates.set(key, p);
+		}
+		return p;
 	}
 
 	private readDeviceFile(path: string): ArrayBuffer | null {
@@ -251,6 +290,11 @@ export default class FontTailorPlugin extends Plugin {
 		}
 		this.body.apply([...this.docs].map((d) => d.body), this.data.slots, this.info);
 		if (JSON.stringify([...this.missing]) !== before) this.onChange?.();
+	}
+
+	/** Does any slot currently resolve to this family? */
+	inUse(family: string): boolean {
+		return this.usedFamilies().has(family);
 	}
 
 	/** Family to the css2 tuples its slots need. */
