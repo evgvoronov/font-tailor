@@ -1,9 +1,9 @@
-import { App, ButtonComponent, DropdownComponent, Modal, ToggleComponent, setIcon, setTooltip } from 'obsidian';
+import { App, ButtonComponent, DropdownComponent, Modal, SliderComponent, ToggleComponent, setIcon, setTooltip } from 'obsidian';
 import { tuple } from './fonts';
 import type FontTailorPlugin from './main';
 import { keepsBlock, missingScripts, scriptsOf } from './scripts';
 import { deviceOnly, sourceLabel } from './sources';
-import { FontInfo, SLOTS, SlotId, downloadState, formatSize, inUseLabel, nearestWeight, parentOf, resolve, slotRole, styleName, tupleStyles, usedBy, usedFirst, weightName } from './slots';
+import { FontInfo, SIZE_MAX, SIZE_MIN, SLOTS, SlotId, SlotValue, downloadState, formatSize, inUseLabel, nearestWeight, parentOf, resolve, slotRole, styleName, tupleStyles, usedBy, usedFirst, weightName } from './slots';
 
 const CATS: [string, string][] = [['all', 'All'], ['mine', 'My fonts'], ['downloaded', 'Downloaded'], ['serif', 'Serif'], ['sans', 'Sans'], ['mono', 'Mono'], ['display', 'Display'], ['hand', 'Handwriting']];
 const CAT_LABEL: Record<string, string> = Object.fromEntries(CATS);
@@ -18,6 +18,10 @@ export class FontPicker extends Modal {
 	private selFamily: string | null;
 	private weight: number;
 	private italic: boolean;
+	/** Manual size factor; undefined is Auto. */
+	private size: number | undefined;
+	/** The size slider was used, so the slot shows the picker's choice live until the picker closes. */
+	private drafting = false;
 	private fonts: FontInfo[] = [];
 	private list: FontInfo[] = [];
 	private rows = new Map<HTMLElement, FontInfo>();
@@ -46,6 +50,7 @@ export class FontPicker extends Modal {
 		this.selFamily = slots[slot]?.family ?? r.family;
 		this.weight = r.weight;
 		this.italic = r.italic;
+		this.size = slots[slot]?.size;
 		this.cat = slotRole(slot) === 'mono' ? 'mono' : 'all';
 	}
 
@@ -136,6 +141,7 @@ export class FontPicker extends Modal {
 	}
 
 	onClose(): void {
+		if (this.drafting) this.plugin.previewSlot(this.slot, null);
 		this.rowObserver?.disconnect();
 		this.moreObserver?.disconnect();
 		this.contentEl.empty();
@@ -408,6 +414,8 @@ export class FontPicker extends Modal {
 		if (this.italic && !f.italics.includes(this.weight)) {
 			el.createSpan({ text: f.italics.length ? `No italic at ${this.weight}. Obsidian would slant it.` : 'No true italic. Obsidian would slant the upright.' });
 		}
+		this.renderSize(el);
+		if (this.drafting) this.plugin.previewSlot(this.slot, this.value(f), f);
 		if ((f.source ?? 'google') === 'google') {
 			const note = el.createSpan({ cls: 'ft-download-note' });
 			const t = tuple(this.weight, this.italic && f.italics.includes(this.weight));
@@ -420,11 +428,48 @@ export class FontPicker extends Modal {
 		this.applyBtn.setDisabled(false).setButtonText(`Use ${f.family} ${styleName(this.weight, this.italic)}`);
 	}
 
+	/** "Size: Auto" with a slider; dragging shows the size live in the notes and the settings preview. */
+	private renderSize(el: HTMLElement): void {
+		const box = el.createDiv({ cls: 'ft-size', attr: { role: 'group', 'aria-label': 'Size' } });
+		box.createSpan({ text: 'Size:' });
+		const valueEl = box.createSpan({ cls: 'ft-size-value' });
+		const slider = new SliderComponent(box).setLimits(SIZE_MIN * 100, SIZE_MAX * 100, 5).setValue(Math.round((this.size ?? 1) * 100));
+		slider.sliderEl.setAttr('aria-label', 'Size in percent');
+		const auto = box.createEl('button', { cls: 'ft-linkish', text: 'Auto', attr: { title: 'Back to the automatic size' } });
+		const show = () => {
+			valueEl.setText(this.size === undefined ? 'Auto' : `${Math.round(this.size * 100)}%`);
+			auto.toggle(this.size !== undefined);
+		};
+		const preview = () => {
+			show();
+			this.drafting = true;
+			if (this.sel) this.plugin.previewSlot(this.slot, this.value(this.sel), this.sel);
+		};
+		show();
+		slider.sliderEl.addEventListener('input', () => {
+			this.size = slider.getValue() / 100;
+			preview();
+		});
+		auto.addEventListener('click', () => {
+			this.size = undefined;
+			slider.setValue(100);
+			preview();
+		});
+	}
+
+	private value(f: FontInfo): SlotValue {
+		return { family: f.family, weight: this.weight, italic: this.italic, ...(this.size === undefined ? {} : { size: this.size }) };
+	}
+
 	private apply(): void {
 		const f = this.sel;
 		if (!f) return;
-		const value = { family: f.family, weight: this.weight, italic: this.italic };
+		const value = this.value(f);
+		const drafting = this.drafting;
+		this.drafting = false;
 		this.close();
-		void this.plugin.changeSlots((s) => (s[this.slot] = value), `${SLOTS[this.slot].name}: ${f.family} ${styleName(value.weight, value.italic)}`, f);
+		void this.plugin.changeSlots((s) => (s[this.slot] = value), `${SLOTS[this.slot].name}: ${f.family} ${styleName(value.weight, value.italic)}${value.size ? `, ${Math.round(value.size * 100)}%` : ''}`, f);
+		// changeSlots has stored the value already, so ending the draft shows no flash of the old one.
+		if (drafting) this.plugin.previewSlot(this.slot, null);
 	}
 }

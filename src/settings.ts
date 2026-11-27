@@ -120,7 +120,7 @@ export class FontTailorSettingTab extends PluginSettingTab {
 		this.renderLanguages();
 		this.renderSlots();
 		this.downloads?.render();
-		if (this.noteEl) renderNote(this.noteEl, scriptsOf(this.plugin.scripts), this.plugin.data.slots, this.plugin.info, this.plugin.adjust());
+		if (this.noteEl) renderNote(this.noteEl, scriptsOf(this.plugin.scripts), this.plugin.slots, this.plugin.info, this.plugin.adjust());
 	}
 
 	private renderLanguages(): void {
@@ -210,13 +210,16 @@ export class FontTailorSettingTab extends PluginSettingTab {
 		let meta = styleName(r.weight, r.italic);
 		const fake = fakeNote(r, info);
 		if (fake) meta += ` · ${fake}`;
+		// Only the slot that sets a manual size shows it; Auto shows nothing.
+		const size = slots[id]?.size;
+		const pct = size === undefined ? '' : `${Math.round(size * 100)}%`;
 		const btn = row.controlEl.createEl('button', {
 			cls: ['ft-font-btn', set ? '' : 'is-inherited'],
-			attr: { 'aria-label': `${SLOTS[id].name} font: ${family} ${meta}. Change`, title: `${family} · ${meta}` },
+			attr: { 'aria-label': `${SLOTS[id].name} font: ${family} ${meta}${pct ? `, size ${pct}` : ''}. Change`, title: `${family} · ${meta}${pct ? ` · ${pct}` : ''}` },
 		});
-		const adjust = this.plugin.adjust()[id];
-		btn.createSpan({ cls: 'ft-family', text: family }).setCssStyles({ ...fontCss(r), fontSizeAdjust: adjust ? String(adjust) : '' });
+		btn.createSpan({ cls: 'ft-family', text: family }).setCssStyles({ ...fontCss(r), fontSizeAdjust: String(this.plugin.adjust()[id] ?? 'none') });
 		btn.createSpan({ cls: 'ft-style', text: meta });
+		if (pct) btn.createSpan({ cls: 'ft-size-tag', text: pct });
 		btn.addEventListener('click', () => this.pick(id));
 		row.addExtraButton((b) => {
 			b.setIcon('rotate-ccw').setTooltip(`Reset ${SLOTS[id].name}`).onClick(() => {

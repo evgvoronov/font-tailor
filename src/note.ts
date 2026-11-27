@@ -24,7 +24,7 @@ export function renderNote(el: HTMLElement, scripts: Script[], values: SlotValue
 	const part = <K extends keyof HTMLElementTagNameMap>(parent: HTMLElement, tag: K, slot: SlotId, text: string) => {
 		const r = resolve(values, slot, info);
 		const node = parent.createEl(tag, { text, attr: { 'data-slot': slot, tabindex: '0', role: 'button' } });
-		node.setCssStyles({ ...fontCss(r), fontSizeAdjust: adjust[slot] ? String(adjust[slot]) : '' });
+		node.setCssStyles({ ...fontCss(r), fontSizeAdjust: String(adjust[slot] ?? 'none') });
 		node.title = `${SLOTS[slot].name}: ${r.family ?? 'Obsidian default'} ${styleName(r.weight, r.italic)}`;
 		return node;
 	};

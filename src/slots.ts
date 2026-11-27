@@ -10,7 +10,12 @@ export interface SlotValue {
 	family: string;
 	weight: number;
 	italic: boolean;
+	/** Manual size factor, SIZE_MIN to SIZE_MAX. Unset means Auto. */
+	size?: number;
 }
+
+export const SIZE_MIN = 0.8;
+export const SIZE_MAX = 1.3;
 
 export type SlotValues = Partial<Record<SlotId, SlotValue>>;
 
@@ -219,21 +224,49 @@ export function formatSize(bytes: number): string {
 	return bytes < 1e6 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
-// ---------- Matching x-height of mixed fonts ----------
+// ---------- Size: matching x-height of mixed fonts, or a manual factor ----------
 
 /** Slots drawn inside a line of Text, so their font sits next to Text's. */
 const INLINE: SlotId[] = ['text.italic', 'text.bold', 'text.boldItalic', 'mono.inline'];
 
+/** Manual size of a slot: its own, or that of the slot it takes its font from. Undefined means Auto. */
+export function slotSize(values: SlotValues, id: SlotId, info: FontLookup = () => undefined): number | undefined {
+	const from = resolve(values, id, info).from;
+	return from ? values[from]?.size : undefined;
+}
+
 /**
- * font-size-adjust for the inline slots whose family differs from Text's. The value is Text's x-height
- * ratio, so the browser scales the other font until its x-height equals Text's.
+ * font-size-adjust per slot. `ratio` gives a font's x-height / font-size, undefined until measured.
+ * Manual size: the font's own ratio times the size, so it grows by exactly that factor.
+ * Auto, inline slots only: as tall as the Text around it (Text's own size included), and with `match`
+ * a different family gets Text's x-height. Block slots on Auto are left alone.
  */
-export function xHeightAdjust(values: SlotValues, info: FontLookup, textRatio: number): Partial<Record<SlotId, number>> {
-	const text = resolve(values, 'text', info).family;
+export function sizeAdjust(values: SlotValues, info: FontLookup, ratio: (r: Resolved) => number | undefined, match: boolean): Partial<Record<SlotId, number>> {
+	const text = resolve(values, 'text', info);
+	const textSize = slotSize(values, 'text', info) ?? 1;
+	const times = (r: number | undefined, f: number) => (r === undefined ? undefined : Math.round(r * f * 1000) / 1000);
 	const out: Partial<Record<SlotId, number>> = {};
-	for (const id of INLINE) {
-		const family = resolve(values, id, info).family;
-		if (family && family !== text) out[id] = textRatio;
+	for (const id of SLOT_IDS) {
+		const r = resolve(values, id, info);
+		if (!r.family) continue;
+		const size = slotSize(values, id, info);
+		let a: number | undefined;
+		if (size !== undefined) a = times(ratio(r), size);
+		else if (INLINE.includes(id)) {
+			if (match && r.family !== text.family) a = times(ratio(text), textSize);
+			else if (textSize !== 1) a = times(ratio(r), textSize);
+		}
+		if (a) out[id] = a;
+	}
+	return out;
+}
+
+/** Slots as any version saved them. 1.0 had no size; a size outside the slider's range is dropped. */
+export function loadSlots(saved: SlotValues | undefined): SlotValues {
+	const out: SlotValues = {};
+	for (const [id, v] of Object.entries(saved ?? {}) as [SlotId, SlotValue][]) {
+		const { size, ...rest } = v;
+		out[id] = typeof size === 'number' && size >= SIZE_MIN && size <= SIZE_MAX ? { ...rest, size } : rest;
 	}
 	return out;
 }

@@ -63,6 +63,49 @@ body.ft-code-block .markdown-rendered pre code {
 	font-style: var(--ft-code-block-style);
 }
 
+/* ---------- Size ----------
+   --ft-<slot>-adjust is font-size-adjust from sizeAdjust(): a manual size, or x-height matching.
+   font-size-adjust inherits, so with ft-sized every place a slot owns sets its own value or none,
+   and Text's size does not reach headings, code or the interface. */
+body.ft-sized {
+	font-size-adjust: var(--ft-interface-adjust, none);
+}
+body.ft-sized :is(.markdown-source-view, .markdown-rendered) {
+	font-size-adjust: var(--ft-text-adjust, none);
+}
+body.ft-sized .markdown-rendered h1,
+body.ft-sized .markdown-source-view .HyperMD-header-1 {
+	font-size-adjust: var(--ft-h1-adjust, none);
+}
+body.ft-sized .markdown-rendered h2,
+body.ft-sized .markdown-source-view .HyperMD-header-2 {
+	font-size-adjust: var(--ft-h2-adjust, none);
+}
+body.ft-sized .markdown-rendered h3,
+body.ft-sized .markdown-source-view .HyperMD-header-3 {
+	font-size-adjust: var(--ft-h3-adjust, none);
+}
+body.ft-sized .markdown-rendered h4,
+body.ft-sized .markdown-source-view .HyperMD-header-4 {
+	font-size-adjust: var(--ft-h4-adjust, none);
+}
+body.ft-sized .markdown-rendered h5,
+body.ft-sized .markdown-source-view .HyperMD-header-5 {
+	font-size-adjust: var(--ft-h5-adjust, none);
+}
+body.ft-sized .markdown-rendered h6,
+body.ft-sized .markdown-source-view .HyperMD-header-6 {
+	font-size-adjust: var(--ft-h6-adjust, none);
+}
+body.ft-sized .markdown-source-view .HyperMD-codeblock,
+body.ft-sized .markdown-rendered pre {
+	font-size-adjust: var(--ft-code-block-adjust, none);
+}
+body.ft-sized .markdown-source-view .cm-inline-code,
+body.ft-sized .markdown-rendered :not(pre) > code {
+	font-size-adjust: var(--ft-code-inline-adjust, none);
+}
+
 /* ---------- Settings tab ---------- */
 
 /* Obsidian 1.15 centers settings in a narrow column; this tab needs the width for its preview.
@@ -243,6 +286,18 @@ button.ft-font-btn.is-inherited {
 }
 button.ft-font-btn.is-inherited:hover {
 	background: var(--background-modifier-hover);
+}
+.ft-font-btn .ft-size-tag {
+	flex: none;
+	padding: 0 4px;
+	border-radius: var(--radius-s);
+	background: var(--background-modifier-hover);
+	color: var(--text-muted);
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-smaller);
+	font-style: normal;
+	font-weight: var(--font-normal);
+	line-height: 1.4;
 }
 .ft-reset.is-hidden {
 	visibility: hidden;
@@ -570,6 +625,22 @@ button.ft-weight {
 button.ft-weight.is-active {
 	background: var(--interactive-normal);
 	color: var(--text-normal);
+}
+.ft-size {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.ft-size-value {
+	min-width: 3.5em;
+	color: var(--text-normal);
+}
+/* Obsidian 1.13+ prints the raw slider number; the percent label says it already. */
+.ft-size .slider-value {
+	display: none;
+}
+.ft-size input[type='range'] {
+	width: 120px;
 }
 .ft-foot-actions {
 	display: flex;

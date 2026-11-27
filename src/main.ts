@@ -1,12 +1,12 @@
 import { Notice, Plugin, getLanguage, normalizePath, requestUrl } from 'obsidian';
-import { BodyFonts, fontCss } from './apply';
+import { BodyFonts, fontCss, fontStack } from './apply';
 import { loadCatalog } from './catalog';
 import { FaceSet, FamilyFiles, PreviewFonts, downloadBlocks, fetchBlocks, tuple } from './fonts';
 import { defaultScripts, keepsBlock } from './scripts';
 import { FONT_FILE, IMPORT_FOLDER, SourceSettings, defaultSources, measureScripts, nodeFs, renders, scanDeviceFolders, scanSystem, scanVault } from './sources';
 import { readFontFile } from './fontfile';
 import { FontTailorSettingTab } from './settings';
-import { FontInfo, SLOT_IDS, SlotId, SlotValues, exRatio, nearestWeight, resolve, usedBy, xHeightAdjust } from './slots';
+import { FontInfo, Resolved, SLOT_IDS, SlotId, SlotValue, SlotValues, exRatio, loadSlots, nearestWeight, resolve, sizeAdjust, usedBy } from './slots';
 
 interface Data {
 	slots: SlotValues;
@@ -40,19 +40,21 @@ export default class FontTailorPlugin extends Plugin {
 	private buffers = new Map<string, ArrayBuffer | null>();
 	/** Family to why its font is not on this device. */
 	readonly missing = new Map<string, string>();
-	/** Text font's x-height / font-size, measured in the main window. */
-	private textRatio: number | null = null;
+	/** x-height / font-size per font and style, measured in the main window; NaN when it could not be. */
+	private ratios = new Map<string, number>();
+	/** A slot value the picker shows live while its size slider moves; not saved. */
+	private draft: { slot: SlotId; value: SlotValue; font: FontInfo } | null = null;
 
 	async onload() {
 		const saved = (await this.loadData()) as Partial<Data> | null;
-		this.data = { slots: {}, fonts: {}, files: {}, ...saved };
+		this.data = { fonts: {}, files: {}, ...saved, slots: loadSlots(saved?.slots) };
 		this.addSettingTab(new FontTailorSettingTab(this.app, this));
 		// Not activeDocument: that is the settings window when the plugin is enabled from there.
 		this.docs.add(this.app.workspace.containerEl.doc);
 		this.registerEvent(this.app.workspace.on('window-open', (_, win) => this.addDoc(win.document)));
 		this.registerEvent(this.app.workspace.on('window-close', (_, win) => this.removeDoc(win.document)));
 		// Obsidian's own text font can change in Appearance.
-		this.registerEvent(this.app.workspace.on('css-change', () => void this.measureText()));
+		this.registerEvent(this.app.workspace.on('css-change', () => void this.measureRatios(true)));
 		this.applyFonts();
 		this.register(() => {
 			this.body.clear();
@@ -75,7 +77,19 @@ export default class FontTailorPlugin extends Plugin {
 		this.applyFonts();
 	}
 
-	info = (family: string): FontInfo | undefined => this.data.fonts[family] ?? this.byName.get(family);
+	info = (family: string): FontInfo | undefined => this.data.fonts[family] ?? (this.draft?.font.family === family ? this.draft.font : this.byName.get(family));
+
+	/** The slots as they look now: the saved ones plus the picker's draft. */
+	get slots(): SlotValues {
+		return this.draft ? { ...this.data.slots, [this.draft.slot]: this.draft.value } : this.data.slots;
+	}
+
+	/** Shows `value` in `slot` everywhere without saving it; null ends the preview. */
+	previewSlot(slot: SlotId, value: SlotValue | null, font?: FontInfo): void {
+		this.draft = value && font ? { slot, value, font } : null;
+		this.applyFonts();
+		this.onChange?.();
+	}
 
 	get scripts(): string[] {
 		return this.data.scripts ?? defaultScripts([getLanguage(), ...navigator.languages]);
@@ -332,14 +346,17 @@ export default class FontTailorPlugin extends Plugin {
 				}
 			}
 		}
-		this.body.apply([...this.docs].map((d) => d.body), this.data.slots, this.info, this.adjust());
+		this.body.apply([...this.docs].map((d) => d.body), this.slots, this.info, this.adjust());
 		if (JSON.stringify([...this.missing]) !== before) this.onChange?.();
-		void this.measureText();
+		void this.measureRatios();
 	}
 
-	/** font-size-adjust per inline slot; empty when the setting is off or nothing is measured yet. */
+	/** font-size-adjust per slot (manual sizes and x-height matching); fonts not measured yet are left out. */
 	adjust(): Partial<Record<SlotId, number>> {
-		return this.data.matchXHeight === false || this.textRatio === null ? {} : xHeightAdjust(this.data.slots, this.info, this.textRatio);
+		return sizeAdjust(this.slots, this.info, (r) => {
+			const v = this.ratios.get(ratioKey(r));
+			return v && v > 0 ? v : undefined;
+		}, this.data.matchXHeight !== false);
 	}
 
 	async setMatchXHeight(on: boolean): Promise<void> {
@@ -347,18 +364,30 @@ export default class FontTailorPlugin extends Plugin {
 		await this.commit();
 	}
 
-	/** Measures Text's x-height with a hidden 100ex box, the metric font-size-adjust uses, and reapplies when it changed. */
-	private async measureText(): Promise<void> {
-		if (this.data.matchXHeight === false || !Object.keys(xHeightAdjust(this.data.slots, this.info, 1)).length) return;
+	/**
+	 * Measures the x-height of every font adjust() asks for, with a hidden 100ex box (the metric
+	 * font-size-adjust uses), and reapplies when a value changed. `all` re-measures known fonts too.
+	 */
+	private async measureRatios(all = false): Promise<void> {
+		const want = new Map<string, Resolved>();
+		sizeAdjust(this.slots, this.info, (r) => {
+			if (all || !this.ratios.has(ratioKey(r))) want.set(ratioKey(r), r);
+			return 1;
+		}, this.data.matchXHeight !== false);
+		if (!want.size) return;
 		const doc = this.app.workspace.containerEl.doc;
-		const r = resolve(this.data.slots, 'text', this.info);
-		if (r.family) await doc.fonts.load(`${r.italic ? 'italic ' : ''}${r.weight} 100px "${r.family}"`, 'x').catch(() => []);
-		const probe = doc.body.createDiv();
-		probe.setCssStyles({ ...fontCss(r), position: 'absolute', visibility: 'hidden', fontSize: '100px', width: '100ex' });
-		const ratio = exRatio(probe.getBoundingClientRect().width, 100);
-		probe.remove();
-		if (ratio === null || ratio === this.textRatio) return;
-		this.textRatio = ratio;
+		let changed = false;
+		for (const [key, r] of want) {
+			if (r.family) await doc.fonts.load(`${r.italic ? 'italic ' : ''}${r.weight} 100px "${r.family}"`, 'x').catch(() => []);
+			const probe = doc.body.createDiv();
+			probe.setCssStyles({ ...fontCss(r), position: 'absolute', visibility: 'hidden', fontSize: '100px', width: '100ex' });
+			const ratio = exRatio(probe.getBoundingClientRect().width, 100) ?? NaN;
+			probe.remove();
+			if (Object.is(ratio, this.ratios.get(key))) continue;
+			this.ratios.set(key, ratio);
+			changed = true;
+		}
+		if (!changed) return;
 		this.applyFonts();
 		this.onChange?.();
 	}
@@ -370,14 +399,14 @@ export default class FontTailorPlugin extends Plugin {
 
 	/** Does any slot currently resolve to this family? */
 	inUse(family: string): boolean {
-		return this.usedFamilies().has(family);
+		return this.usedFamilies(this.data.slots).has(family);
 	}
 
 	/** Family to the css2 tuples its slots need. */
-	private usedFamilies(): Map<string, Set<string>> {
+	private usedFamilies(values = this.slots): Map<string, Set<string>> {
 		const used = new Map<string, Set<string>>();
 		for (const id of SLOT_IDS) {
-			const r = resolve(this.data.slots, id, this.info);
+			const r = resolve(values, id, this.info);
 			const font = r.family ? this.info(r.family) : undefined;
 			if (!r.family || !font) continue;
 			const weight = font.weights.includes(r.weight) ? r.weight : nearestWeight(font.weights, r.weight);
@@ -397,7 +426,8 @@ export default class FontTailorPlugin extends Plugin {
 	private async syncNow(): Promise<void> {
 		const scripts = this.scripts;
 		let changed = false;
-		for (const [family, needed] of this.usedFamilies()) {
+		// Saved slots only: a picker draft never downloads.
+		for (const [family, needed] of this.usedFamilies(this.data.slots)) {
 			if ((this.info(family)?.source ?? 'google') !== 'google') continue;
 			const have = this.data.files[family];
 			const tuples = [...new Set([...(have?.tuples ?? []), ...needed])];
@@ -436,4 +466,9 @@ function notify(message: string, undo: () => void): void {
 		});
 	});
 	const notice = new Notice(frag, 6000);
+}
+
+/** One x-height ratio per font stack, weight and style. */
+function ratioKey(r: Resolved): string {
+	return `${fontStack(r)}|${r.weight}|${r.italic}`;
 }

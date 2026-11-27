@@ -13,12 +13,13 @@ Change the fonts Obsidian uses, either broadly or one style at a time. Pick from
 - **Google Fonts picker.** Search and filter the catalog (serif, sans, mono, display, handwriting), preview each font in your own languages, pick a weight and italic, and see the download size before you apply it. Fonts your slots use come first in every list, labeled with the slots ("In use: Text, Italic"). The **Downloaded** filter lists the Google fonts already in the vault.
 - **Downloaded fonts.** A collapsed section at the bottom of the settings lists every downloaded Google family: size on disk, the styles and scripts downloaded, and which slots use it. Families no slot uses can be deleted, with Undo.
 - **Matching x-height.** When italic, bold, bold italic or inline code use another font than the text, the plugin scales that font so its lowercase letters are as tall as the text's. A handwriting italic next to a monospace text no longer looks tiny. Turn it off with **Match x-height of mixed fonts**.
+- **Size per slot.** The picker's **Size** slider (80% to 130%) overrides the automatic size for one slot; **Auto** returns it to x-height matching. Slots that take their font from it take its size too, unless they set their own. A slot with a manual size shows it next to its style, for example **115%**, and its reset clears the size with the font.
 - **Your languages.** Tell the plugin which scripts you write in (Latin, Cyrillic, Greek, CJK, Thai and others). The picker shows a sample line for each, can hide fonts that miss one, and a slot warns when its font lacks a script.
 - **Your own fonts.** Use TTF, OTF, WOFF and WOFF2 files from vault folders, import font files into the vault, and on desktop use folders outside the vault and the fonts installed on your computer.
 
 ![Settings: the slot tree on the left and the preview note on the right](design/screenshots/v3/settings-wide.png)
 
-![The font picker with the Downloaded filter: the fonts in use come first, each labeled with its slots](design/screenshots/v3/picker-downloaded.png)
+![The font picker with the Downloaded filter: the fonts in use come first, each labeled with its slots, and the Size slider at 115%](design/screenshots/v3/picker-downloaded.png)
 
 ![Downloaded fonts in the settings: size, styles, scripts and the slots that use each family](design/screenshots/v3/downloaded-fonts.png)
 
@@ -28,7 +29,7 @@ Change the fonts Obsidian uses, either broadly or one style at a time. Pick from
 
 1. Open **Settings → Font Tailor**.
 2. Select **Change** next to **My languages** if the defaults (Latin plus the scripts of Obsidian's language and your system languages) are not what you write in.
-3. Select the font box of a slot (for example **Text**) to open the picker, choose a font, weight and italic, then select **Use**.
+3. Select the font box of a slot (for example **Text**) to open the picker, choose a font, weight and italic, then select **Use**. To make the slot larger or smaller, move **Size**; the notes and the preview follow while you drag.
 4. To return a slot to its parent, select the reset icon next to it. **Reset all** clears every override.
 
 Removing an override or disabling the plugin gives the fonts back to Obsidian.
@@ -86,9 +87,9 @@ Needs Node.js 18 or newer (tests need 22.6 or newer).
 - `npm run dev` rebuilds `main.js` from `src/main.ts` on every change.
 - `npm run build` type-checks and makes a production build.
 - `npm run lint` runs ESLint with the Obsidian rules.
-- `npm test` checks the fallback chain, the font file parser, the "in use" and "downloaded" logic and the x-height maths (`test/`).
+- `npm test` checks the fallback chain, the font file parser, the "in use" and "downloaded" logic, the size maths, size inheritance and loading settings from 1.0 (`test/`).
 
-Source map: `slots.ts` (slot tree, fallback chain, fonts in use, x-height matching), `scripts.ts` (writing systems and samples), `catalog.ts` (font list), `fonts.ts` (downloads and font faces), `fontfile.ts` (font table parser), `sources.ts` and `sourcesModal.ts` (local font sources), `apply.ts` (body classes and CSS variables; the selectors are in `styles.css`), `settings.ts`, `downloads.ts` (downloaded fonts section), `picker.ts`, `note.ts` (preview).
+Source map: `slots.ts` (slot tree, fallback chain, fonts in use, sizes and x-height matching), `scripts.ts` (writing systems and samples), `catalog.ts` (font list), `fonts.ts` (downloads and font faces), `fontfile.ts` (font table parser), `sources.ts` and `sourcesModal.ts` (local font sources), `apply.ts` (body classes and CSS variables; the selectors are in `styles.css`), `settings.ts`, `downloads.ts` (downloaded fonts section), `picker.ts`, `note.ts` (preview).
 
 ## Releasing
 
