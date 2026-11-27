@@ -29,7 +29,8 @@ const HEADINGS: SlotId[] = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
 export class BodyFonts {
 	private applied: { body: HTMLElement; props: string[]; classes: string[] }[] = [];
 
-	apply(bodies: HTMLElement[], values: SlotValues, info: FontLookup): void {
+	/** `adjust` is font-size-adjust per slot, from xHeightAdjust(). */
+	apply(bodies: HTMLElement[], values: SlotValues, info: FontLookup, adjust: Partial<Record<SlotId, number>> = {}): void {
 		const props: Record<string, string> = {};
 		const classes: string[] = [];
 		for (const id of new Set([...Object.keys(CLASS_KEY), ...Object.keys(OBSIDIAN_VAR), ...HEADINGS] as SlotId[])) {
@@ -51,6 +52,8 @@ export class BodyFonts {
 				props[`--ft-${key}-family`] = stack;
 				props[`--ft-${key}-weight`] = weight;
 				props[`--ft-${key}-style`] = style;
+				const a = adjust[id];
+				if (a) props[`--ft-${key}-adjust`] = String(a);
 			}
 		}
 		for (const body of bodies) {

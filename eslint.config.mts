@@ -31,9 +31,10 @@ export default defineConfig(
 	},
 	...obsidianmd.configs.recommended,
 	// "Google Fonts" is a product name; the brands option replaces the defaults, so extend them.
+	// "x-height" is a type term that starts lowercase.
 	{
 		files: ['src/**'],
-		rules: { 'obsidianmd/ui/sentence-case': ['warn', { enforceCamelCaseLower: true, brands: [...DEFAULT_BRANDS, 'Google Fonts'] }] },
+		rules: { 'obsidianmd/ui/sentence-case': ['warn', { enforceCamelCaseLower: true, brands: [...DEFAULT_BRANDS, 'Google Fonts'], ignoreRegex: ['x-height'] }] },
 	},
 	// Tests run in Node, not in Obsidian.
 	{ files: ['test/**'], rules: { 'obsidianmd/no-nodejs-modules': 'off' } },

@@ -19,12 +19,12 @@ export function parseLine(line: string): { text: string; slot: SlotId }[] {
 }
 
 /** A sample note with one line per chosen script. Every part carries data-slot so hover and click can find it. */
-export function renderNote(el: HTMLElement, scripts: Script[], values: SlotValues, info: FontLookup): void {
+export function renderNote(el: HTMLElement, scripts: Script[], values: SlotValues, info: FontLookup, adjust: Partial<Record<SlotId, number>> = {}): void {
 	el.empty();
 	const part = <K extends keyof HTMLElementTagNameMap>(parent: HTMLElement, tag: K, slot: SlotId, text: string) => {
 		const r = resolve(values, slot, info);
 		const node = parent.createEl(tag, { text, attr: { 'data-slot': slot, tabindex: '0', role: 'button' } });
-		node.setCssStyles(fontCss(r));
+		node.setCssStyles({ ...fontCss(r), fontSizeAdjust: adjust[slot] ? String(adjust[slot]) : '' });
 		node.title = `${SLOTS[slot].name}: ${r.family ?? 'Obsidian default'} ${styleName(r.weight, r.italic)}`;
 		return node;
 	};

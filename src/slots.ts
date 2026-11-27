@@ -1,4 +1,4 @@
-// Slot tree and the fallback chain. No Obsidian imports, so the test can run it in plain Node.
+// Slot tree, the fallback chain, and which fonts are in use or downloaded. No Obsidian imports, so the test can run it in plain Node.
 
 export type SlotId =
 	| 'text' | 'text.italic' | 'text.bold' | 'text.boldItalic'
@@ -171,4 +171,75 @@ export function fakeNote(r: Resolved, info: FontLookup): string {
 	if (r.italic && !font.italics.includes(r.weight)) return `no ${r.weight} italic`;
 	if (r.wantWeight > r.weight + 100) return `no ${r.wantWeight} weight`;
 	return '';
+}
+
+// ---------- Which fonts the slots use and what is downloaded ----------
+
+/** What is on disk for a Google family; the same shape as FamilyFiles in fonts.ts. */
+export interface Downloaded {
+	tuples: string[];
+	scripts: string[];
+}
+
+/** Family to the set slots that chose it, in slot order. Slots that only inherit a font are left out. */
+export function usedBy(values: SlotValues): Map<string, SlotId[]> {
+	const used = new Map<string, SlotId[]>();
+	for (const id of SLOT_IDS) {
+		const v = values[id];
+		if (v) used.set(v.family, [...(used.get(v.family) ?? []), id]);
+	}
+	return used;
+}
+
+/** "In use: Text, Italic". */
+export function inUseLabel(slots: SlotId[]): string {
+	return `In use: ${slots.map((s) => SLOTS[s].name).join(', ')}`;
+}
+
+/** Full when every weight and italic of the family is on disk. */
+export function downloadState(files: Downloaded | undefined, font: FontInfo): 'full' | 'partial' | null {
+	if (!files?.tuples.length) return null;
+	return files.tuples.length < font.weights.length + font.italics.length ? 'partial' : 'full';
+}
+
+/** Style names of "ital,wght" tuples, uprights first, by weight. */
+export function tupleStyles(tuples: string[]): string[] {
+	return tuples
+		.map((t) => t.split(',').map(Number) as [number, number])
+		.sort((a, b) => a[0] - b[0] || a[1] - b[1])
+		.map(([i, w]) => styleName(w, i === 1));
+}
+
+/** Fonts in use first; the order within each group stays. */
+export function usedFirst<T>(list: T[], used: (item: T) => boolean): T[] {
+	return [...list.filter(used), ...list.filter((x) => !used(x))];
+}
+
+export function formatSize(bytes: number): string {
+	return bytes < 1e6 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1048576).toFixed(1)} MB`;
+}
+
+// ---------- Matching x-height of mixed fonts ----------
+
+/** Slots drawn inside a line of Text, so their font sits next to Text's. */
+const INLINE: SlotId[] = ['text.italic', 'text.bold', 'text.boldItalic', 'mono.inline'];
+
+/**
+ * font-size-adjust for the inline slots whose family differs from Text's. The value is Text's x-height
+ * ratio, so the browser scales the other font until its x-height equals Text's.
+ */
+export function xHeightAdjust(values: SlotValues, info: FontLookup, textRatio: number): Partial<Record<SlotId, number>> {
+	const text = resolve(values, 'text', info).family;
+	const out: Partial<Record<SlotId, number>> = {};
+	for (const id of INLINE) {
+		const family = resolve(values, id, info).family;
+		if (family && family !== text) out[id] = textRatio;
+	}
+	return out;
+}
+
+/** x-height / font-size from the width of a `100ex` box at `fontPx`, rounded to 3 places. Null when it cannot be measured. */
+export function exRatio(width100ex: number, fontPx: number): number | null {
+	const r = width100ex / 100 / fontPx;
+	return r > 0 && r < 2 ? Math.round(r * 1000) / 1000 : null;
 }

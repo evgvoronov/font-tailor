@@ -3,9 +3,9 @@ import { tuple } from './fonts';
 import type FontTailorPlugin from './main';
 import { keepsBlock, missingScripts, scriptsOf } from './scripts';
 import { deviceOnly, sourceLabel } from './sources';
-import { FontInfo, SLOTS, SlotId, nearestWeight, parentOf, resolve, slotRole, styleName, weightName } from './slots';
+import { FontInfo, SLOTS, SlotId, downloadState, formatSize, inUseLabel, nearestWeight, parentOf, resolve, slotRole, styleName, tupleStyles, usedBy, usedFirst, weightName } from './slots';
 
-const CATS: [string, string][] = [['all', 'All'], ['mine', 'My fonts'], ['serif', 'Serif'], ['sans', 'Sans'], ['mono', 'Mono'], ['display', 'Display'], ['hand', 'Handwriting']];
+const CATS: [string, string][] = [['all', 'All'], ['mine', 'My fonts'], ['downloaded', 'Downloaded'], ['serif', 'Serif'], ['sans', 'Sans'], ['mono', 'Mono'], ['display', 'Display'], ['hand', 'Handwriting']];
 const CAT_LABEL: Record<string, string> = Object.fromEntries(CATS);
 const PAGE = 60;
 
@@ -35,6 +35,8 @@ export class FontPicker extends Modal {
 	/** Family to the labels of every source that has it. */
 	private sourcesOf = new Map<string, string[]>();
 	private mineToggle!: ToggleComponent;
+	/** Family to the slots that chose it. */
+	private used = new Map<string, SlotId[]>();
 	private moreObserver: IntersectionObserver | null = null;
 
 	constructor(app: App, private plugin: FontTailorPlugin, private slot: SlotId) {
@@ -180,10 +182,18 @@ export class FontPicker extends Modal {
 	private filtered(): FontInfo[] {
 		const q = this.query.trim().toLowerCase();
 		const mine = this.plugin.scripts;
-		return this.fonts.filter((f) =>
-			(this.cat === 'all' || f.category === this.cat || (this.cat === 'mine' && (f.source ?? 'google') !== 'google' && (!this.sourceFilter || this.label(f) === this.sourceFilter))) &&
+		const google = (f: FontInfo) => (f.source ?? 'google') === 'google';
+		return usedFirst(this.fonts.filter((f) =>
+			(this.cat === 'all' || f.category === this.cat ||
+				(this.cat === 'mine' && !google(f) && (!this.sourceFilter || this.label(f) === this.sourceFilter)) ||
+				(this.cat === 'downloaded' && google(f) && !!this.plugin.data.files[f.family])) &&
 			(!this.onlyMine || !missingScripts(f.subsets, mine).length) &&
-			(!q || f.family.toLowerCase().includes(q)));
+			(!q || f.family.toLowerCase().includes(q))), (f) => !!this.usedSlots(f));
+	}
+
+	/** The slots that chose this copy of the font, if any. */
+	private usedSlots(f: FontInfo): SlotId[] | undefined {
+		return this.isUsedCopy(f) ? this.used.get(f.family) : undefined;
 	}
 
 	private label(f: FontInfo): string {
@@ -214,6 +224,7 @@ export class FontPicker extends Modal {
 		this.moreObserver?.disconnect();
 		this.rows.clear();
 		this.listEl.empty();
+		this.used = usedBy(this.plugin.data.slots);
 		this.list = this.filtered();
 		this.shown = 0;
 		if (this.catalogFailed) {
@@ -252,6 +263,8 @@ export class FontPicker extends Modal {
 			const row = this.listEl.createDiv({ cls: ['ft-font-row', f.family === current && this.isUsedCopy(f) ? 'is-current' : ''], attr: { role: 'option' } });
 			const meta = row.createDiv('ft-font-row-meta');
 			meta.createEl('b', { text: f.family });
+			const slots = this.usedSlots(f);
+			if (slots) meta.createSpan({ cls: 'ft-badge mod-in-use', text: inUseLabel(slots) });
 			const tags = meta.createDiv('ft-tags');
 			const cat = CAT_LABEL[f.category];
 			tags.createSpan({ text: `${cat ? `${cat} · ` : ''}${f.weights.length} weight${f.weights.length > 1 ? 's' : ''}${f.italics.length ? ', italic' : ''}` });
@@ -352,17 +365,15 @@ export class FontPicker extends Modal {
 			setTooltip(icon, 'Only on this device. It does not sync; other devices fall back to Obsidian\'s font.');
 		}
 		const files = (f.source ?? 'google') === 'google' ? this.plugin.data.files[f.family] : undefined;
-		if (files) {
-			const total = f.weights.length + f.italics.length;
-			const partial = files.tuples.length < total;
-			const icon = tags.createSpan({ cls: ['ft-marker', 'mod-downloaded'], attr: { 'aria-label': partial ? 'Partly downloaded' : 'Downloaded' } });
-			setIcon(icon, partial ? 'circle-dashed' : 'circle-check');
-			const styles = files.tuples.map((t) => {
-				const [i = '0', w = '400'] = t.split(',');
-				return styleName(Number(w), i === '1');
-			});
+		const state = downloadState(files, f);
+		if (files && state) {
+			const partial = state === 'partial';
+			const badge = tags.createSpan({ cls: 'ft-badge mod-downloaded' });
+			setIcon(badge.createSpan('ft-badge-icon'), partial ? 'circle-dashed' : 'circle-check');
+			badge.appendText(partial ? 'Partly downloaded' : 'Downloaded');
+			const styles = tupleStyles(files.tuples);
 			const size = this.sizes.get(f.family);
-			setTooltip(icon, `${partial ? `Partly downloaded: ${styles.length} of ${total} styles` : 'Downloaded: all styles'}\n${styles.join(', ')}\n${scriptsOf(files.scripts).map((s) => s.name).join(', ')}${size ? `\n${formatSize(size)} in the vault` : ''}`);
+			setTooltip(badge, `${partial ? `${styles.length} of ${f.weights.length + f.italics.length} styles` : 'All styles'}: ${styles.join(', ')}\n${scriptsOf(files.scripts).map((s) => s.name).join(', ')}${size ? `\n${formatSize(size)} in the vault` : ''}`);
 		}
 	}
 
@@ -416,8 +427,4 @@ export class FontPicker extends Modal {
 		this.close();
 		void this.plugin.changeSlots((s) => (s[this.slot] = value), `${SLOTS[this.slot].name}: ${f.family} ${styleName(value.weight, value.italic)}`, f);
 	}
-}
-
-function formatSize(bytes: number): string {
-	return bytes < 1e6 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1048576).toFixed(1)} MB`;
 }

@@ -1,6 +1,7 @@
 import { App, ExtraButtonComponent, Menu, Platform, PluginSettingTab, Setting, setIcon } from 'obsidian';
 import { fontCss } from './apply';
 import type FontTailorPlugin from './main';
+import { DownloadsSection } from './downloads';
 import { renderNote } from './note';
 import { FontPicker } from './picker';
 import { SourcesModal } from './sourcesModal';
@@ -15,6 +16,7 @@ export class FontTailorSettingTab extends PluginSettingTab {
 	private langs: Setting | null = null;
 	private sourcesRow: Setting | null = null;
 	private resetAll: Setting | null = null;
+	private downloads: DownloadsSection | null = null;
 
 	constructor(app: App, private plugin: FontTailorPlugin) {
 		super(app, plugin);
@@ -36,6 +38,10 @@ export class FontTailorSettingTab extends PluginSettingTab {
 		this.sourcesRow = new Setting(left)
 			.setName('Font sources')
 			.addButton((b) => b.setButtonText('Manage').onClick(() => new SourcesModal(this.app, this.plugin).open()));
+		new Setting(left)
+			.setName('Match x-height of mixed fonts')
+			.setDesc('When italic, bold or inline code use another font than the text, scale it to the height of the text\'s lowercase letters.')
+			.addToggle((t) => t.setValue(this.plugin.data.matchXHeight !== false).onChange((v) => void this.plugin.setMatchXHeight(v)));
 		this.slotsEl = left.createDiv();
 		this.resetAll = new Setting(left).setName('Reset all overrides').addButton((b) =>
 			b.setButtonText('Reset all').setWarning().onClick(() => {
@@ -45,6 +51,7 @@ export class FontTailorSettingTab extends PluginSettingTab {
 				}, `Reset ${n} override${n === 1 ? '' : 's'}`);
 			}),
 		);
+		this.downloads = new DownloadsSection(left.createDiv(), this.plugin);
 
 		const aside = el.createDiv({ cls: ['ft-preview', this.plugin.data.previewCollapsed ? 'is-collapsed' : ''] });
 		const bar = aside.createDiv('ft-preview-bar');
@@ -79,7 +86,8 @@ export class FontTailorSettingTab extends PluginSettingTab {
 	private render(): void {
 		this.renderLanguages();
 		this.renderSlots();
-		if (this.noteEl) renderNote(this.noteEl, scriptsOf(this.plugin.scripts), this.plugin.data.slots, this.plugin.info);
+		this.downloads?.render();
+		if (this.noteEl) renderNote(this.noteEl, scriptsOf(this.plugin.scripts), this.plugin.data.slots, this.plugin.info, this.plugin.adjust());
 	}
 
 	private renderLanguages(): void {
@@ -134,7 +142,7 @@ export class FontTailorSettingTab extends PluginSettingTab {
 		const n = Object.keys(values).length;
 		this.resetAll?.setDesc(n === 0
 			? 'Nothing is overridden. Obsidian uses its own fonts.'
-			: `Clears ${n} override${n === 1 ? '' : 's'} and gives the fonts back to Obsidian. Downloaded font files stay in the vault.`);
+			: `Clears ${n} override${n === 1 ? '' : 's'} and gives the fonts back to Obsidian. Downloaded font files stay in the vault until you delete them below.`);
 		for (const c of this.resetAll?.components ?? []) c.setDisabled(n === 0);
 	}
 
@@ -173,7 +181,8 @@ export class FontTailorSettingTab extends PluginSettingTab {
 			cls: ['ft-font-btn', set ? '' : 'is-inherited'],
 			attr: { 'aria-label': `${SLOTS[id].name} font: ${family} ${meta}. Change`, title: `${family} · ${meta}` },
 		});
-		btn.createSpan({ cls: 'ft-family', text: family }).setCssStyles(fontCss(r));
+		const adjust = this.plugin.adjust()[id];
+		btn.createSpan({ cls: 'ft-family', text: family }).setCssStyles({ ...fontCss(r), fontSizeAdjust: adjust ? String(adjust) : '' });
 		btn.createSpan({ cls: 'ft-style', text: meta });
 		btn.addEventListener('click', () => this.pick(id));
 		row.addExtraButton((b) => {

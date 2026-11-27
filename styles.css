@@ -26,6 +26,7 @@ body.ft-italic .markdown-rendered :is(em, i):not(:is(h1, h2, h3, h4, h5, h6) *) 
 	font-family: var(--ft-italic-family);
 	font-weight: var(--ft-italic-weight);
 	font-style: var(--ft-italic-style);
+	font-size-adjust: var(--ft-italic-adjust, none);
 }
 
 body.ft-bold .markdown-source-view .cm-strong:not(.cm-em):not(.cm-header),
@@ -33,6 +34,7 @@ body.ft-bold .markdown-rendered :is(strong, b):not(:is(h1, h2, h3, h4, h5, h6) *
 	font-family: var(--ft-bold-family);
 	font-weight: var(--ft-bold-weight);
 	font-style: var(--ft-bold-style);
+	font-size-adjust: var(--ft-bold-adjust, none);
 }
 
 /* One more element in the selector than the rules above, so it wins for nested <strong><em>. */
@@ -42,6 +44,7 @@ body.ft-bold-italic .markdown-rendered :is(em, i) :is(strong, b):not(:is(h1, h2,
 	font-family: var(--ft-bold-italic-family);
 	font-weight: var(--ft-bold-italic-weight);
 	font-style: var(--ft-bold-italic-style);
+	font-size-adjust: var(--ft-bold-italic-adjust, none);
 }
 
 body.ft-code-inline .markdown-source-view .cm-inline-code,
@@ -49,6 +52,7 @@ body.ft-code-inline .markdown-rendered :not(pre) > code {
 	font-family: var(--ft-code-inline-family);
 	font-weight: var(--ft-code-inline-weight);
 	font-style: var(--ft-code-inline-style);
+	font-size-adjust: var(--ft-code-inline-adjust, none);
 }
 
 body.ft-code-block .markdown-source-view .HyperMD-codeblock,
@@ -187,7 +191,10 @@ button.ft-font-btn {
 	width: 196px;
 	height: 30px;
 }
+/* The family always shows; the style and its warning give way first (the tooltip has the full text). */
 .ft-font-btn .ft-family {
+	flex: none;
+	max-width: 100%;
 	font-size: 15px;
 	white-space: nowrap;
 	overflow: hidden;
@@ -199,6 +206,9 @@ button.ft-font-btn {
 	line-height: 28px;
 }
 .ft-font-btn .ft-style {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
 	margin-inline-start: auto;
 	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
@@ -428,9 +438,6 @@ button.ft-chip.is-active {
 	width: 14px;
 	height: 14px;
 }
-.ft-marker.mod-downloaded {
-	color: var(--text-accent);
-}
 .ft-source-filter {
 	font-size: var(--font-ui-smaller);
 }
@@ -454,6 +461,27 @@ button.ft-chip.is-active {
 .ft-badge.mod-source {
 	background: var(--background-modifier-hover);
 	color: var(--text-muted);
+}
+.ft-badge.mod-downloaded {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	background: rgba(var(--color-green-rgb), 0.15);
+	color: var(--text-success);
+}
+.ft-badge-icon {
+	display: inline-flex;
+}
+.ft-badge-icon svg {
+	width: 12px;
+	height: 12px;
+}
+.ft-badge.mod-in-use {
+	background: hsla(var(--interactive-accent-hsl), 0.2);
+	color: var(--text-accent);
+}
+.ft-name .ft-badge {
+	font-size: var(--font-ui-smaller);
 }
 .ft-list-note {
 	display: flex;
