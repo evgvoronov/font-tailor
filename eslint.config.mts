@@ -21,7 +21,7 @@ export default defineConfig(
 			},
 			parserOptions: {
 				projectService: {
-					allowDefaultProject: ['eslint.config.mts', 'manifest.json'],
+					allowDefaultProject: ['eslint.config.mts', 'manifest.json', 'test/*.ts'],
 				},
 				tsconfigRootDir: import.meta.dirname,
 				extraFileExtensions: ['.json'],
@@ -29,4 +29,6 @@ export default defineConfig(
 		},
 	},
 	...obsidianmd.configs.recommended,
+	// Tests run in Node, not in Obsidian.
+	{ files: ['test/**'], rules: { 'obsidianmd/no-nodejs-modules': 'off' } },
 );
