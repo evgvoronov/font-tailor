@@ -1,10 +1,11 @@
-import { App, ButtonComponent, Modal, ToggleComponent } from 'obsidian';
+import { App, ButtonComponent, DropdownComponent, Modal, ToggleComponent, setIcon, setTooltip } from 'obsidian';
 import { tuple } from './fonts';
 import type FontTailorPlugin from './main';
 import { keepsBlock, missingScripts, scriptsOf } from './scripts';
+import { deviceOnly, sourceLabel } from './sources';
 import { FontInfo, SLOTS, SlotId, nearestWeight, parentOf, resolve, slotRole, styleName, weightName } from './slots';
 
-const CATS: [string, string][] = [['all', 'All'], ['serif', 'Serif'], ['sans', 'Sans'], ['mono', 'Mono'], ['display', 'Display'], ['hand', 'Handwriting']];
+const CATS: [string, string][] = [['all', 'All'], ['mine', 'My fonts'], ['serif', 'Serif'], ['sans', 'Sans'], ['mono', 'Mono'], ['display', 'Display'], ['hand', 'Handwriting']];
 const CAT_LABEL: Record<string, string> = Object.fromEntries(CATS);
 const PAGE = 60;
 
@@ -27,6 +28,12 @@ export class FontPicker extends Modal {
 	private applyBtn!: ButtonComponent;
 	private sampleEl!: HTMLTextAreaElement;
 	private rowObserver: IntersectionObserver | null = null;
+	private catalogFailed = false;
+	private sourceFilter = '';
+	private sourceDrop!: DropdownComponent;
+	private sizes = new Map<string, number>();
+	/** Family to the labels of every source that has it. */
+	private sourcesOf = new Map<string, string[]>();
 	private mineToggle!: ToggleComponent;
 	private moreObserver: IntersectionObserver | null = null;
 
@@ -73,6 +80,12 @@ export class FontPicker extends Modal {
 		});
 		const toolRow = tools.createDiv('ft-tool-row');
 		this.catsEl = toolRow.createDiv({ cls: 'ft-chips', attr: { role: 'group', 'aria-label': 'Category' } });
+		this.sourceDrop = new DropdownComponent(toolRow).onChange((v) => {
+			this.sourceFilter = v;
+			this.renderList();
+		});
+		this.sourceDrop.selectEl.addClass('ft-source-filter');
+		this.sourceDrop.selectEl.setAttr('aria-label', 'Source');
 		const toggleLabel = toolRow.createEl('label', { cls: 'ft-toggle', text: 'Supports my languages' });
 		this.mineToggle = new ToggleComponent(toggleLabel).setValue(this.onlyMine).setTooltip(scriptsOf(this.plugin.scripts).map((s) => s.name).join(', ')).onChange((v) => {
 			this.onlyMine = v;
@@ -126,18 +139,30 @@ export class FontPicker extends Modal {
 		this.contentEl.empty();
 	}
 
+	/** Local fonts first (fewer, and the user put them there), then Google by popularity. */
 	private async loadFonts(retry = false): Promise<void> {
-		try {
-			this.fonts = await this.plugin.getCatalog(retry);
-		} catch (e) {
-			console.error('Font Tailor: catalog', e);
-			this.listEl.empty();
-			const empty = this.listEl.createDiv({ cls: 'ft-list-empty', text: 'Could not load the font list. Check the connection.' });
-			empty.createEl('br');
-			new ButtonComponent(empty).setButtonText('Try again').onClick(() => void this.loadFonts(true));
-			return;
-		}
-		this.sel = this.fonts.find((f) => f.family === this.selFamily) ?? null;
+		const [google, local] = await Promise.all([
+			this.plugin.getCatalog(retry).catch((e) => {
+				console.error('Font Tailor: catalog', e);
+				return null;
+			}),
+			this.plugin.getLocalFonts().catch((e) => {
+				console.error('Font Tailor: local fonts', e);
+				return [];
+			}),
+		]);
+		this.catalogFailed = !google;
+		this.fonts = [...local, ...(google ?? [])];
+		this.sizes = await this.plugin.diskSizes().catch(() => new Map<string, number>());
+		this.sourcesOf.clear();
+		for (const f of this.fonts) this.sourcesOf.set(f.family, [...(this.sourcesOf.get(f.family) ?? []), this.label(f)]);
+		this.sourceDrop.selectEl.empty();
+		this.sourceDrop.addOption('', 'All my sources');
+		for (const l of [...new Set(local.map((f) => this.label(f)))].sort()) this.sourceDrop.addOption(l, l);
+		this.sourceDrop.setValue(this.sourceFilter);
+		this.renderCats();
+		const source = this.selFamily ? this.plugin.info(this.selFamily)?.source ?? 'google' : null;
+		this.sel = this.fonts.find((f) => f.family === this.selFamily && (f.source ?? 'google') === source) ?? null;
 		this.renderList();
 		this.renderStyle();
 		this.scrollToSelected();
@@ -156,12 +181,23 @@ export class FontPicker extends Modal {
 		const q = this.query.trim().toLowerCase();
 		const mine = this.plugin.scripts;
 		return this.fonts.filter((f) =>
-			(this.cat === 'all' || f.category === this.cat) &&
+			(this.cat === 'all' || f.category === this.cat || (this.cat === 'mine' && (f.source ?? 'google') !== 'google' && (!this.sourceFilter || this.label(f) === this.sourceFilter))) &&
 			(!this.onlyMine || !missingScripts(f.subsets, mine).length) &&
 			(!q || f.family.toLowerCase().includes(q)));
 	}
 
+	private label(f: FontInfo): string {
+		return sourceLabel(f, this.plugin.data.imported ?? []);
+	}
+
+	/** The copy the slots use, when this family is in use: same source and folder. */
+	private isUsedCopy(f: FontInfo): boolean {
+		const used = this.plugin.data.fonts[f.family];
+		return !!used && (used.source ?? 'google') === (f.source ?? 'google') && (used.origin ?? f.origin) === f.origin;
+	}
+
 	private renderCats(): void {
+		this.sourceDrop.selectEl.toggle(this.cat === 'mine' && this.sourceDrop.selectEl.options.length > 2);
 		this.catsEl.empty();
 		for (const [id, label] of CATS) {
 			const chip = this.catsEl.createEl('button', { cls: ['ft-chip', this.cat === id ? 'is-active' : ''], text: label, attr: { 'aria-pressed': String(this.cat === id) } });
@@ -180,6 +216,10 @@ export class FontPicker extends Modal {
 		this.listEl.empty();
 		this.list = this.filtered();
 		this.shown = 0;
+		if (this.catalogFailed) {
+			const note = this.listEl.createDiv({ cls: 'ft-list-note', text: 'Could not load Google Fonts. Check the connection. ' });
+			new ButtonComponent(note).setButtonText('Try again').onClick(() => void this.loadFonts(true));
+		}
 		if (this.list.length) {
 			this.appendRows();
 			return;
@@ -209,13 +249,15 @@ export class FontPicker extends Modal {
 		const mine = this.plugin.scripts;
 		const current = this.plugin.data.slots[this.slot]?.family;
 		for (const f of this.list.slice(this.shown, this.shown + PAGE)) {
-			const row = this.listEl.createDiv({ cls: ['ft-font-row', f.family === current ? 'is-current' : ''], attr: { role: 'option' } });
+			const row = this.listEl.createDiv({ cls: ['ft-font-row', f.family === current && this.isUsedCopy(f) ? 'is-current' : ''], attr: { role: 'option' } });
 			const meta = row.createDiv('ft-font-row-meta');
 			meta.createEl('b', { text: f.family });
-			const tags = meta.createSpan('ft-tags');
-			tags.appendText(`${CAT_LABEL[f.category] ?? f.category} · ${f.weights.length} weight${f.weights.length > 1 ? 's' : ''}${f.italics.length ? ', italic' : ''}`);
+			const tags = meta.createDiv('ft-tags');
+			const cat = CAT_LABEL[f.category];
+			tags.createSpan({ text: `${cat ? `${cat} · ` : ''}${f.weights.length} weight${f.weights.length > 1 ? 's' : ''}${f.italics.length ? ', italic' : ''}` });
 			const missing = missingScripts(f.subsets, mine);
 			if (missing.length) tags.createSpan({ cls: 'ft-badge', text: `No ${missing.map((s) => s.name).join(', ')}` });
+			this.sourceBadge(tags, f);
 			row.createDiv('ft-font-row-sample');
 			row.addEventListener('click', () => this.select(f));
 			row.addEventListener('dblclick', () => this.apply());
@@ -255,6 +297,11 @@ export class FontPicker extends Modal {
 	}
 
 	private loadPreview(f: FontInfo, weights: number[]): void {
+		if (f.source === 'system') return;
+		if (f.source && f.source !== 'google') {
+			this.plugin.preview.loadLocal(this.contentEl.doc, f.family, this.plugin.localFaces(f));
+			return;
+		}
 		const scripts = this.plugin.scripts;
 		this.plugin.preview.load(this.contentEl.doc, f.family, weights.map((w) => tuple(w, this.italic && f.italics.includes(w))), (label) => keepsBlock(label, scripts));
 	}
@@ -285,6 +332,38 @@ export class FontPicker extends Modal {
 			while (n >= this.shown) this.appendRows();
 		}
 		this.listEl.querySelector('.ft-font-row.is-selected')?.scrollIntoView({ block: 'nearest' });
+	}
+
+	/** Source name, a this-device-only marker, and for Google fonts what is downloaded. */
+	private sourceBadge(tags: HTMLElement, f: FontInfo): void {
+		const label = this.label(f);
+		const badge = tags.createSpan({ cls: 'ft-badge mod-source', text: label });
+		const lines = [f.source === 'google' || !f.source ? 'Downloaded from Google Fonts when a slot uses it.' : f.source === 'system' ? 'Installed on this computer.' : `${f.source === 'folder' ? 'Folder' : 'Vault folder'}: ${f.origin ?? ''}`];
+		const others = (this.sourcesOf.get(f.family) ?? []).filter((l) => l !== label);
+		if (others.length) {
+			lines.push(`Also in: ${others.join(', ')}.`);
+			const used = this.plugin.data.fonts[f.family];
+			if (used && this.plugin.inUse(f.family)) lines.push(this.isUsedCopy(f) ? 'Your slots use this copy.' : `Your slots use the copy from ${this.label(used)}.`);
+		}
+		setTooltip(badge, lines.join('\n'));
+		if (deviceOnly(f)) {
+			const icon = tags.createSpan({ cls: 'ft-marker', attr: { 'aria-label': 'This device only' } });
+			setIcon(icon, 'laptop');
+			setTooltip(icon, 'Only on this device. It does not sync; other devices fall back to Obsidian\'s font.');
+		}
+		const files = (f.source ?? 'google') === 'google' ? this.plugin.data.files[f.family] : undefined;
+		if (files) {
+			const total = f.weights.length + f.italics.length;
+			const partial = files.tuples.length < total;
+			const icon = tags.createSpan({ cls: ['ft-marker', 'mod-downloaded'], attr: { 'aria-label': partial ? 'Partly downloaded' : 'Downloaded' } });
+			setIcon(icon, partial ? 'circle-dashed' : 'circle-check');
+			const styles = files.tuples.map((t) => {
+				const [i = '0', w = '400'] = t.split(',');
+				return styleName(Number(w), i === '1');
+			});
+			const size = this.sizes.get(f.family);
+			setTooltip(icon, `${partial ? `Partly downloaded: ${styles.length} of ${total} styles` : 'Downloaded: all styles'}\n${styles.join(', ')}\n${scriptsOf(files.scripts).map((s) => s.name).join(', ')}${size ? `\n${formatSize(size)} in the vault` : ''}`);
+		}
 	}
 
 	private renderStyle(): void {
@@ -318,6 +397,15 @@ export class FontPicker extends Modal {
 		if (this.italic && !f.italics.includes(this.weight)) {
 			el.createSpan({ text: f.italics.length ? `No italic at ${this.weight}. Obsidian would slant it.` : 'No true italic. Obsidian would slant the upright.' });
 		}
+		if ((f.source ?? 'google') === 'google') {
+			const note = el.createSpan({ cls: 'ft-download-note' });
+			const t = tuple(this.weight, this.italic && f.italics.includes(this.weight));
+			const key = `${f.family}|${t}`;
+			this.plugin.estimate(f.family, [t]).then((bytes) => {
+				if (!note.isConnected || `${this.sel?.family}|${tuple(this.weight, this.italic && f.italics.includes(this.weight))}` !== key) return;
+				note.setText(bytes ? `Downloads about ${formatSize(bytes)} for this style` : 'This style is already downloaded');
+			}).catch(() => note.setText('Needs a connection to download'));
+		}
 		this.applyBtn.setDisabled(false).setButtonText(`Use ${f.family} ${styleName(this.weight, this.italic)}`);
 	}
 
@@ -328,4 +416,8 @@ export class FontPicker extends Modal {
 		this.close();
 		void this.plugin.changeSlots((s) => (s[this.slot] = value), `${SLOTS[this.slot].name}: ${f.family} ${styleName(value.weight, value.italic)}`, f);
 	}
+}
+
+function formatSize(bytes: number): string {
+	return bytes < 1e6 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1048576).toFixed(1)} MB`;
 }

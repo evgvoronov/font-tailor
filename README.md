@@ -15,6 +15,18 @@ A slot sets family, weight and italic. The preview next to the slots is a sample
 
 **My languages** lists the scripts you write in (Latin, Cyrillic, Greek, CJK and others). The default is Latin plus the scripts of Obsidian's language and your system languages. The picker shows one sample line per script, can hide fonts that miss one of them, and a slot whose font lacks a script says which script falls back to another font.
 
+## Font sources
+
+All sources share the same picker (filter **My fonts**) and the same slots and fallback chain. Settings, **Font sources**, **Manage**:
+
+- **Google Fonts**: downloaded into the plugin folder when a slot uses them.
+- **Vault folders**: by default `<config folder>/fonts` and `fonts/`, plus folders you add. They sync with the vault and work on mobile.
+- **Import font files**: choose or drop TTF, OTF, WOFF or WOFF2 files; they are copied into `fonts/` in the vault.
+- **Folders on this device** (desktop): folders outside the vault. They do not sync.
+- **Installed fonts** (desktop): the fonts installed on the computer, through the Local Font Access API or, when Electron refuses it, the OS font folders. They do not sync.
+
+Family, weight, italic and supported scripts come from the font's `name`, `OS/2`, `post` and `cmap` tables (TTF, OTF, TTC, WOFF). WOFF2 tables need a Brotli decoder that Obsidian does not have, so for WOFF2 the family, weight and italic come from the file name ("Inter-SemiBoldItalic.woff2") and the scripts are measured in the browser. A slot whose font is not on this device (a device-only font set on another computer, a deleted file) falls back to Obsidian's font and says why.
+
 ## Network use
 
 Font Tailor uses the network only for these, and works offline once fonts are downloaded:
@@ -33,9 +45,9 @@ Needs Node.js 18 or newer (tests need 22.6 or newer).
 - `npm run dev` rebuilds `main.js` from `src/main.ts` on every change.
 - `npm run build` type-checks and makes a production build.
 - `npm run lint` runs ESLint with the Obsidian rules.
-- `npm test` checks the fallback chain (`test/fallback.test.ts`).
+- `npm test` checks the fallback chain and the font file parser (`test/`).
 
-Source map: `slots.ts` (slot tree and fallback chain), `scripts.ts` (writing systems and samples), `catalog.ts` (font list), `fonts.ts` (downloads and font faces), `apply.ts` (body classes and CSS variables; the selectors are in `styles.css`), `settings.ts`, `picker.ts`, `note.ts` (preview).
+Source map: `slots.ts` (slot tree and fallback chain), `scripts.ts` (writing systems and samples), `catalog.ts` (font list), `fonts.ts` (downloads and font faces), `fontfile.ts` (font table parser), `sources.ts` and `sourcesModal.ts` (local font sources), `apply.ts` (body classes and CSS variables; the selectors are in `styles.css`), `settings.ts`, `picker.ts`, `note.ts` (preview).
 
 ## Manual install
 

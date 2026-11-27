@@ -98,7 +98,7 @@ export async function downloadBlocks(adapter: DataAdapter, dir: string, family: 
 export class FaceSet {
 	private faces: { doc: Document; face: FontFace }[] = [];
 
-	add(doc: Document, family: string, src: string, d: { style: string; weight: string; range: string }): void {
+	add(doc: Document, family: string, src: string | ArrayBuffer, d: { style: string; weight: string; range: string }): FontFace | null {
 		const desc: FontFaceDescriptors = { style: d.style, weight: d.weight, display: 'swap' };
 		if (d.range) desc.unicodeRange = d.range;
 		try {
@@ -107,8 +107,10 @@ export class FaceSet {
 			const face = new Face(family, src, desc);
 			doc.fonts.add(face);
 			this.faces.push({ doc, face });
+			return face;
 		} catch (e) {
 			console.warn('Font Tailor: bad font face', family, e);
+			return null;
 		}
 	}
 
@@ -130,6 +132,14 @@ export class PreviewFonts {
 		fetchBlocks(family, tuples)
 			.then((blocks) => blocks.filter((b) => keep(b.label)).forEach((b) => this.faces.add(doc, family, `url("${b.url}")`, b)))
 			.catch(() => this.loaded.delete(key));
+	}
+
+	/** Faces of a vault or device font, registered once per family. */
+	loadLocal(doc: Document, family: string, faces: { src: string | ArrayBuffer | null; d: { style: string; weight: string; range: string } }[]): void {
+		const key = `${family}|local`;
+		if (this.loaded.has(key)) return;
+		this.loaded.add(key);
+		for (const { src, d } of faces) if (src) this.faces.add(doc, family, src, d);
 	}
 
 	clear(): void {

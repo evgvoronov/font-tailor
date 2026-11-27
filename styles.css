@@ -402,7 +402,9 @@ button.ft-chip.is-active {
 }
 .ft-font-row-meta {
 	display: flex;
-	gap: 8px;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 12px;
 	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
 }
@@ -411,8 +413,30 @@ button.ft-chip.is-active {
 	color: var(--text-normal);
 }
 .ft-font-row-meta .ft-tags {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 4px 8px;
 	margin-inline-start: auto;
-	text-align: end;
+}
+.ft-marker {
+	display: inline-flex;
+	color: var(--text-muted);
+}
+.ft-marker svg {
+	width: 14px;
+	height: 14px;
+}
+.ft-marker.mod-downloaded {
+	color: var(--text-accent);
+}
+.ft-source-filter {
+	font-size: var(--font-ui-smaller);
+}
+.ft-download-note {
+	margin-inline-start: auto;
+	color: var(--text-faint);
 }
 .ft-font-row.is-current .ft-font-row-meta b::after {
 	content: ' · current';
@@ -421,12 +445,30 @@ button.ft-chip.is-active {
 }
 .ft-badge {
 	display: inline-block;
-	margin-inline-start: 6px;
+	white-space: nowrap;
 	padding: 0 6px;
 	border-radius: var(--radius-s);
 	background: rgba(var(--color-orange-rgb), 0.15);
 	color: var(--text-warning);
 }
+.ft-badge.mod-source {
+	background: var(--background-modifier-hover);
+	color: var(--text-muted);
+}
+.ft-list-note {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+.ft-sources .modal-content.is-dragover {
+	outline: 2px dashed var(--interactive-accent);
+	outline-offset: 4px;
+	border-radius: var(--radius-m);
+}
+
 .ft-font-row-sample {
 	font-size: 22px;
 	line-height: 1.35;
