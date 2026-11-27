@@ -39,25 +39,42 @@ function shortPath(p: string): string {
 	return parts.length > 3 ? `…${p.includes('\\') ? '\\' : '/'}${parts.slice(-2).join(p.includes('\\') ? '\\' : '/')}` : p;
 }
 
+// The parts of Node's fs, path and os that the desktop-only sources use. Read-only on purpose:
+// outside the vault the plugin only lists folders and reads font files, it never writes.
+interface Dirent {
+	name: string;
+	isDirectory(): boolean;
+}
+interface FileHandle {
+	read(buffer: Uint8Array, offset: number, length: number, position: number): Promise<{ bytesRead: number }>;
+	close(): Promise<void>;
+}
+interface ReadOnlyFs {
+	existsSync(path: string): boolean;
+	readFileSync(path: string): Uint8Array;
+	promises: {
+		readdir(path: string, options: { withFileTypes: true }): Promise<Dirent[]>;
+		open(path: string, flags: 'r'): Promise<FileHandle>;
+	};
+}
 interface Node {
-	fs: typeof import('fs');
-	path: typeof import('path');
+	fs: ReadOnlyFs;
+	path: { join(...parts: string[]): string };
 	home: string;
 	env: Record<string, string | undefined>;
 }
 
 /** Node modules on desktop, null on mobile. */
 export function nodeFs(): Node | null {
-	if (!Platform.isDesktop) return null;
-	/* eslint-disable @typescript-eslint/no-require-imports, no-undef -- desktop only, guarded above */
-	const os = require('os') as typeof import('os');
+	const req = (window as unknown as { require?: (id: string) => unknown }).require;
+	if (!Platform.isDesktop || !req) return null;
+	const os = req('os') as { homedir(): string };
 	return {
-		fs: require('fs') as typeof import('fs'),
-		path: require('path') as typeof import('path'),
+		fs: req('fs') as ReadOnlyFs,
+		path: req('path') as Node['path'],
 		home: os.homedir(),
-		env: (require('process') as typeof import('process')).env,
+		env: (req('process') as { env: Record<string, string | undefined> }).env,
 	};
-	/* eslint-enable @typescript-eslint/no-require-imports, no-undef -- end of the desktop-only block */
 }
 
 const bufferReader = (buf: ArrayBuffer): Reader => async (o, n) => new Uint8Array(buf, o, Math.max(0, Math.min(n, buf.byteLength - o)));
@@ -125,7 +142,7 @@ export async function scanDeviceFolders(dirs: string[], source: Source = 'folder
 	const { fs, path } = node;
 	const found: Found[] = [];
 	const walk = async (dir: string, depth: number): Promise<void> => {
-		let entries: import('fs').Dirent[];
+		let entries: Dirent[];
 		try {
 			entries = await fs.promises.readdir(dir, { withFileTypes: true });
 		} catch {
@@ -135,7 +152,7 @@ export async function scanDeviceFolders(dirs: string[], source: Source = 'folder
 			const full = path.join(dir, e.name);
 			if (e.isDirectory() && depth < 4) await walk(full, depth + 1);
 			else if (FONT_FILE.test(e.name)) {
-				let fd: import('fs').promises.FileHandle | null = null;
+				let fd: FileHandle | null = null;
 				try {
 					fd = await fs.promises.open(full, 'r');
 					const handle = fd;

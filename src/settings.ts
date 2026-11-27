@@ -1,11 +1,15 @@
-import { App, ExtraButtonComponent, Menu, Platform, PluginSettingTab, Setting, setIcon } from 'obsidian';
+import { App, ButtonComponent, ExtraButtonComponent, Menu, Platform, PluginSettingTab, Setting, SettingDefinitionItem, requireApiVersion, setIcon } from 'obsidian';
 import { fontCss } from './apply';
 import type FontTailorPlugin from './main';
+import { DownloadsSection } from './downloads';
 import { renderNote } from './note';
 import { FontPicker } from './picker';
 import { SourcesModal } from './sourcesModal';
 import { SCRIPTS, missingScripts, scriptsOf } from './scripts';
-import { AREAS, SLOTS, SlotId, controls, fakeNote, parentOf, resolve, styleName } from './slots';
+import { AREAS, SLOTS, SLOT_IDS, SlotId, controls, fakeNote, parentOf, resolve, styleName } from './slots';
+
+/** Settings search finds the tab by these. */
+const SEARCH_TERMS = ['My languages', 'Font sources', 'Match x-height of mixed fonts', 'Reset all overrides', 'Downloaded fonts', 'Google Fonts', 'Preview', ...SLOT_IDS.map((id) => SLOTS[id].name)];
 
 // Obsidian lists this tab under the manifest name, "Font Tailor".
 export class FontTailorSettingTab extends PluginSettingTab {
@@ -15,15 +19,53 @@ export class FontTailorSettingTab extends PluginSettingTab {
 	private langs: Setting | null = null;
 	private sourcesRow: Setting | null = null;
 	private resetAll: Setting | null = null;
+	private downloads: DownloadsSection | null = null;
 
 	constructor(app: App, private plugin: FontTailorPlugin) {
 		super(app, plugin);
 	}
 
+	/**
+	 * Obsidian 1.13+ renders the tab from this list and indexes it for settings search. The slots and the
+	 * pinned preview do not fit separate rows, so one row holds the whole layout and its aliases make each
+	 * setting findable. Older versions never call this and use display().
+	 */
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		return [{
+			name: 'Font slots and preview',
+			desc: 'Fonts per slot, languages, font sources, downloaded fonts.',
+			aliases: SEARCH_TERMS,
+			render: (setting) => {
+				setting.settingEl.empty();
+				setting.settingEl.addClass('ft-tab-row');
+				this.build(setting.settingEl);
+				return () => this.teardown();
+			},
+		}];
+	}
+
 	display(): void {
 		this.containerEl.empty();
-		// Listeners go on this child, so they are dropped with it on the next display().
-		const el = this.containerEl.createDiv('ft-tab');
+		this.build(this.containerEl);
+	}
+
+	hide(): void {
+		this.teardown();
+		super.hide();
+	}
+
+	private teardown(): void {
+		this.plugin.onChange = null;
+		this.plugin.preview.clear();
+		this.plugin.removeDoc(this.containerEl.doc);
+		this.containerEl.removeClass('ft-tab-host');
+	}
+
+	private build(parent: HTMLElement): void {
+		// Lets styles.css widen the settings column for this tab only.
+		this.containerEl.addClass('ft-tab-host');
+		// Listeners go on this child, so they are dropped with it on the next render.
+		const el = parent.createDiv('ft-tab');
 		const left = el.createDiv('ft-slots');
 		left.createEl('p', {
 			cls: 'ft-intro',
@@ -36,15 +78,20 @@ export class FontTailorSettingTab extends PluginSettingTab {
 		this.sourcesRow = new Setting(left)
 			.setName('Font sources')
 			.addButton((b) => b.setButtonText('Manage').onClick(() => new SourcesModal(this.app, this.plugin).open()));
+		new Setting(left)
+			.setName('Match x-height of mixed fonts')
+			.setDesc('When italic, bold or inline code use another font than the text, scale it to the height of the text\'s lowercase letters.')
+			.addToggle((t) => t.setValue(this.plugin.data.matchXHeight !== false).onChange((v) => void this.plugin.setMatchXHeight(v)));
 		this.slotsEl = left.createDiv();
 		this.resetAll = new Setting(left).setName('Reset all overrides').addButton((b) =>
-			b.setButtonText('Reset all').setWarning().onClick(() => {
+			destructive(b).setButtonText('Reset all').onClick(() => {
 				const n = Object.keys(this.plugin.data.slots).length;
 				void this.plugin.changeSlots((s) => {
 					for (const k of Object.keys(s) as SlotId[]) delete s[k];
 				}, `Reset ${n} override${n === 1 ? '' : 's'}`);
 			}),
 		);
+		this.downloads = new DownloadsSection(left.createDiv(), this.plugin);
 
 		const aside = el.createDiv({ cls: ['ft-preview', this.plugin.data.previewCollapsed ? 'is-collapsed' : ''] });
 		const bar = aside.createDiv('ft-preview-bar');
@@ -69,17 +116,11 @@ export class FontTailorSettingTab extends PluginSettingTab {
 		this.render();
 	}
 
-	hide(): void {
-		this.plugin.onChange = null;
-		this.plugin.preview.clear();
-		this.plugin.removeDoc(this.containerEl.doc);
-		this.containerEl.empty();
-	}
-
 	private render(): void {
 		this.renderLanguages();
 		this.renderSlots();
-		if (this.noteEl) renderNote(this.noteEl, scriptsOf(this.plugin.scripts), this.plugin.data.slots, this.plugin.info);
+		this.downloads?.render();
+		if (this.noteEl) renderNote(this.noteEl, scriptsOf(this.plugin.scripts), this.plugin.slots, this.plugin.info, this.plugin.adjust());
 	}
 
 	private renderLanguages(): void {
@@ -134,7 +175,7 @@ export class FontTailorSettingTab extends PluginSettingTab {
 		const n = Object.keys(values).length;
 		this.resetAll?.setDesc(n === 0
 			? 'Nothing is overridden. Obsidian uses its own fonts.'
-			: `Clears ${n} override${n === 1 ? '' : 's'} and gives the fonts back to Obsidian. Downloaded font files stay in the vault.`);
+			: `Clears ${n} override${n === 1 ? '' : 's'} and gives the fonts back to Obsidian. Downloaded font files stay in the vault until you delete them below.`);
 		for (const c of this.resetAll?.components ?? []) c.setDisabled(n === 0);
 	}
 
@@ -169,12 +210,16 @@ export class FontTailorSettingTab extends PluginSettingTab {
 		let meta = styleName(r.weight, r.italic);
 		const fake = fakeNote(r, info);
 		if (fake) meta += ` · ${fake}`;
+		// Only the slot that sets a manual size shows it; Auto shows nothing.
+		const size = slots[id]?.size;
+		const pct = size === undefined ? '' : `${Math.round(size * 100)}%`;
 		const btn = row.controlEl.createEl('button', {
 			cls: ['ft-font-btn', set ? '' : 'is-inherited'],
-			attr: { 'aria-label': `${SLOTS[id].name} font: ${family} ${meta}. Change`, title: `${family} · ${meta}` },
+			attr: { 'aria-label': `${SLOTS[id].name} font: ${family} ${meta}${pct ? `, size ${pct}` : ''}. Change`, title: `${family} · ${meta}${pct ? ` · ${pct}` : ''}` },
 		});
-		btn.createSpan({ cls: 'ft-family', text: family }).setCssStyles(fontCss(r));
+		btn.createSpan({ cls: 'ft-family', text: family }).setCssStyles({ ...fontCss(r), fontSizeAdjust: String(this.plugin.adjust()[id] ?? 'none') });
 		btn.createSpan({ cls: 'ft-style', text: meta });
+		if (pct) btn.createSpan({ cls: 'ft-size-tag', text: pct });
 		btn.addEventListener('click', () => this.pick(id));
 		row.addExtraButton((b) => {
 			b.setIcon('rotate-ccw').setTooltip(`Reset ${SLOTS[id].name}`).onClick(() => {
@@ -228,4 +273,11 @@ export class FontTailorSettingTab extends PluginSettingTab {
 		e.preventDefault();
 		this.pick(t.dataset.slot as SlotId);
 	}
+}
+
+/** setDestructive() is Obsidian 1.13+; before that the same look comes from the mod-warning class. */
+function destructive(b: ButtonComponent): ButtonComponent {
+	if (requireApiVersion('1.13.0')) return b.setDestructive();
+	b.buttonEl.addClass('mod-warning');
+	return b;
 }

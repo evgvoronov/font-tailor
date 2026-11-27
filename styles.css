@@ -26,6 +26,7 @@ body.ft-italic .markdown-rendered :is(em, i):not(:is(h1, h2, h3, h4, h5, h6) *) 
 	font-family: var(--ft-italic-family);
 	font-weight: var(--ft-italic-weight);
 	font-style: var(--ft-italic-style);
+	font-size-adjust: var(--ft-italic-adjust, none);
 }
 
 body.ft-bold .markdown-source-view .cm-strong:not(.cm-em):not(.cm-header),
@@ -33,6 +34,7 @@ body.ft-bold .markdown-rendered :is(strong, b):not(:is(h1, h2, h3, h4, h5, h6) *
 	font-family: var(--ft-bold-family);
 	font-weight: var(--ft-bold-weight);
 	font-style: var(--ft-bold-style);
+	font-size-adjust: var(--ft-bold-adjust, none);
 }
 
 /* One more element in the selector than the rules above, so it wins for nested <strong><em>. */
@@ -42,6 +44,7 @@ body.ft-bold-italic .markdown-rendered :is(em, i) :is(strong, b):not(:is(h1, h2,
 	font-family: var(--ft-bold-italic-family);
 	font-weight: var(--ft-bold-italic-weight);
 	font-style: var(--ft-bold-italic-style);
+	font-size-adjust: var(--ft-bold-italic-adjust, none);
 }
 
 body.ft-code-inline .markdown-source-view .cm-inline-code,
@@ -49,6 +52,7 @@ body.ft-code-inline .markdown-rendered :not(pre) > code {
 	font-family: var(--ft-code-inline-family);
 	font-weight: var(--ft-code-inline-weight);
 	font-style: var(--ft-code-inline-style);
+	font-size-adjust: var(--ft-code-inline-adjust, none);
 }
 
 body.ft-code-block .markdown-source-view .HyperMD-codeblock,
@@ -59,14 +63,73 @@ body.ft-code-block .markdown-rendered pre code {
 	font-style: var(--ft-code-block-style);
 }
 
+/* ---------- Size ----------
+   --ft-<slot>-adjust is font-size-adjust from sizeAdjust(): a manual size, or x-height matching.
+   font-size-adjust inherits, so with ft-sized every place a slot owns sets its own value or none,
+   and Text's size does not reach headings, code or the interface. */
+body.ft-sized {
+	font-size-adjust: var(--ft-interface-adjust, none);
+}
+body.ft-sized :is(.markdown-source-view, .markdown-rendered) {
+	font-size-adjust: var(--ft-text-adjust, none);
+}
+body.ft-sized .markdown-rendered h1,
+body.ft-sized .markdown-source-view .HyperMD-header-1 {
+	font-size-adjust: var(--ft-h1-adjust, none);
+}
+body.ft-sized .markdown-rendered h2,
+body.ft-sized .markdown-source-view .HyperMD-header-2 {
+	font-size-adjust: var(--ft-h2-adjust, none);
+}
+body.ft-sized .markdown-rendered h3,
+body.ft-sized .markdown-source-view .HyperMD-header-3 {
+	font-size-adjust: var(--ft-h3-adjust, none);
+}
+body.ft-sized .markdown-rendered h4,
+body.ft-sized .markdown-source-view .HyperMD-header-4 {
+	font-size-adjust: var(--ft-h4-adjust, none);
+}
+body.ft-sized .markdown-rendered h5,
+body.ft-sized .markdown-source-view .HyperMD-header-5 {
+	font-size-adjust: var(--ft-h5-adjust, none);
+}
+body.ft-sized .markdown-rendered h6,
+body.ft-sized .markdown-source-view .HyperMD-header-6 {
+	font-size-adjust: var(--ft-h6-adjust, none);
+}
+body.ft-sized .markdown-source-view .HyperMD-codeblock,
+body.ft-sized .markdown-rendered pre {
+	font-size-adjust: var(--ft-code-block-adjust, none);
+}
+body.ft-sized .markdown-source-view .cm-inline-code,
+body.ft-sized .markdown-rendered :not(pre) > code {
+	font-size-adjust: var(--ft-code-inline-adjust, none);
+}
+
 /* ---------- Settings tab ---------- */
 
-/* Obsidian 1.15 centers settings in a narrow column; this tab needs the width for its preview. */
-.vertical-tab-content:has(> .ft-tab),
-.modal.mod-settings .vertical-tab-content:not(.setting-page):has(> .ft-tab) {
+/* Obsidian 1.15 centers settings in a narrow column; this tab needs the width for its preview.
+   settings.ts sets ft-tab-host on the tab's content element. */
+.vertical-tab-content.ft-tab-host,
+.modal.mod-settings .vertical-tab-content.ft-tab-host {
 	--setting-group-center-offset: 0px;
 	padding-inline: var(--size-4-8);
 	container-type: inline-size;
+}
+/* Obsidian 1.13+ renders the tab as one setting row (see getSettingDefinitions); drop the card and the
+   700px cap around it. overflow stays visible so the preview can stick. */
+.ft-tab-host > .setting-group,
+.ft-tab-host > .setting-group > .setting-items,
+.ft-tab-host .setting-item.ft-tab-row {
+	display: block;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: none;
+	box-shadow: none;
+	overflow: visible;
+	max-width: none;
 }
 .ft-tab {
 	display: grid;
@@ -84,8 +147,9 @@ body.ft-code-block .markdown-rendered pre code {
 	max-width: 60ch;
 }
 
-/* Flat rows as in the mockup, also where Obsidian draws setting items as cards. */
-.ft-slots .setting-item {
+/* Flat rows as in the mockup, also where Obsidian draws setting items as cards.
+   .ft-tab ties with Obsidian's ".setting-group .setting-item:not(...)" when 1.13+ wraps the tab in a group. */
+.ft-tab .ft-slots .setting-item {
 	background: none;
 	border-radius: 0;
 	box-shadow: none;
@@ -187,7 +251,10 @@ button.ft-font-btn {
 	width: 196px;
 	height: 30px;
 }
+/* The family always shows; the style and its warning give way first (the tooltip has the full text). */
 .ft-font-btn .ft-family {
+	flex: none;
+	max-width: 100%;
 	font-size: 15px;
 	white-space: nowrap;
 	overflow: hidden;
@@ -199,6 +266,9 @@ button.ft-font-btn {
 	line-height: 28px;
 }
 .ft-font-btn .ft-style {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
 	margin-inline-start: auto;
 	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
@@ -216,6 +286,18 @@ button.ft-font-btn.is-inherited {
 }
 button.ft-font-btn.is-inherited:hover {
 	background: var(--background-modifier-hover);
+}
+.ft-font-btn .ft-size-tag {
+	flex: none;
+	padding: 0 4px;
+	border-radius: var(--radius-s);
+	background: var(--background-modifier-hover);
+	color: var(--text-muted);
+	font-family: var(--font-interface);
+	font-size: var(--font-ui-smaller);
+	font-style: normal;
+	font-weight: var(--font-normal);
+	line-height: 1.4;
 }
 .ft-reset.is-hidden {
 	visibility: hidden;
@@ -428,9 +510,6 @@ button.ft-chip.is-active {
 	width: 14px;
 	height: 14px;
 }
-.ft-marker.mod-downloaded {
-	color: var(--text-accent);
-}
 .ft-source-filter {
 	font-size: var(--font-ui-smaller);
 }
@@ -454,6 +533,27 @@ button.ft-chip.is-active {
 .ft-badge.mod-source {
 	background: var(--background-modifier-hover);
 	color: var(--text-muted);
+}
+.ft-badge.mod-downloaded {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	background: rgba(var(--color-green-rgb), 0.15);
+	color: var(--text-success);
+}
+.ft-badge-icon {
+	display: inline-flex;
+}
+.ft-badge-icon svg {
+	width: 12px;
+	height: 12px;
+}
+.ft-badge.mod-in-use {
+	background: hsla(var(--interactive-accent-hsl), 0.2);
+	color: var(--text-accent);
+}
+.ft-name .ft-badge {
+	font-size: var(--font-ui-smaller);
 }
 .ft-list-note {
 	display: flex;
@@ -525,6 +625,22 @@ button.ft-weight {
 button.ft-weight.is-active {
 	background: var(--interactive-normal);
 	color: var(--text-normal);
+}
+.ft-size {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.ft-size-value {
+	min-width: 3.5em;
+	color: var(--text-normal);
+}
+/* Obsidian 1.13+ prints the raw slider number; the percent label says it already. */
+.ft-size .slider-value {
+	display: none;
+}
+.ft-size input[type='range'] {
+	width: 120px;
 }
 .ft-foot-actions {
 	display: flex;
@@ -612,8 +728,8 @@ button.ft-undo:hover {
 	}
 }
 @media (prefers-reduced-motion: reduce) {
-	.ft-tab *,
-	.ft-picker * {
-		transition: none !important;
+	.ft-expander svg,
+	.ft-note [data-slot] {
+		transition: none;
 	}
 }

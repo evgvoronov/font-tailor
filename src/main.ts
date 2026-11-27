@@ -1,12 +1,12 @@
 import { Notice, Plugin, getLanguage, normalizePath, requestUrl } from 'obsidian';
-import { BodyFonts } from './apply';
+import { BodyFonts, fontCss, fontStack } from './apply';
 import { loadCatalog } from './catalog';
 import { FaceSet, FamilyFiles, PreviewFonts, downloadBlocks, fetchBlocks, tuple } from './fonts';
 import { defaultScripts, keepsBlock } from './scripts';
 import { FONT_FILE, IMPORT_FOLDER, SourceSettings, defaultSources, measureScripts, nodeFs, renders, scanDeviceFolders, scanSystem, scanVault } from './sources';
 import { readFontFile } from './fontfile';
 import { FontTailorSettingTab } from './settings';
-import { FontInfo, SLOT_IDS, SlotValues, nearestWeight, resolve } from './slots';
+import { FontInfo, Resolved, SLOT_IDS, SlotId, SlotValue, SlotValues, exRatio, loadSlots, nearestWeight, resolve, sizeAdjust, usedBy } from './slots';
 
 interface Data {
 	slots: SlotValues;
@@ -19,6 +19,8 @@ interface Data {
 	sources?: SourceSettings;
 	/** Vault paths of files copied in with Import, so the picker can label them "Imported". */
 	imported?: string[];
+	/** Scale inline fonts to Text's x-height. Unset means on. */
+	matchXHeight?: boolean;
 }
 
 export default class FontTailorPlugin extends Plugin {
@@ -38,15 +40,21 @@ export default class FontTailorPlugin extends Plugin {
 	private buffers = new Map<string, ArrayBuffer | null>();
 	/** Family to why its font is not on this device. */
 	readonly missing = new Map<string, string>();
+	/** x-height / font-size per font and style, measured in the main window; NaN when it could not be. */
+	private ratios = new Map<string, number>();
+	/** A slot value the picker shows live while its size slider moves; not saved. */
+	private draft: { slot: SlotId; value: SlotValue; font: FontInfo } | null = null;
 
 	async onload() {
 		const saved = (await this.loadData()) as Partial<Data> | null;
-		this.data = { slots: {}, fonts: {}, files: {}, ...saved };
+		this.data = { fonts: {}, files: {}, ...saved, slots: loadSlots(saved?.slots) };
 		this.addSettingTab(new FontTailorSettingTab(this.app, this));
 		// Not activeDocument: that is the settings window when the plugin is enabled from there.
 		this.docs.add(this.app.workspace.containerEl.doc);
 		this.registerEvent(this.app.workspace.on('window-open', (_, win) => this.addDoc(win.document)));
 		this.registerEvent(this.app.workspace.on('window-close', (_, win) => this.removeDoc(win.document)));
+		// Obsidian's own text font can change in Appearance.
+		this.registerEvent(this.app.workspace.on('css-change', () => void this.measureRatios(true)));
 		this.applyFonts();
 		this.register(() => {
 			this.body.clear();
@@ -69,7 +77,19 @@ export default class FontTailorPlugin extends Plugin {
 		this.applyFonts();
 	}
 
-	info = (family: string): FontInfo | undefined => this.data.fonts[family] ?? this.byName.get(family);
+	info = (family: string): FontInfo | undefined => this.data.fonts[family] ?? (this.draft?.font.family === family ? this.draft.font : this.byName.get(family));
+
+	/** The slots as they look now: the saved ones plus the picker's draft. */
+	get slots(): SlotValues {
+		return this.draft ? { ...this.data.slots, [this.draft.slot]: this.draft.value } : this.data.slots;
+	}
+
+	/** Shows `value` in `slot` everywhere without saving it; null ends the preview. */
+	previewSlot(slot: SlotId, value: SlotValue | null, font?: FontInfo): void {
+		this.draft = value && font ? { slot, value, font } : null;
+		this.applyFonts();
+		this.onChange?.();
+	}
 
 	get scripts(): string[] {
 		return this.data.scripts ?? defaultScripts([getLanguage(), ...navigator.languages]);
@@ -173,12 +193,50 @@ export default class FontTailorPlugin extends Plugin {
 		return sizes;
 	}
 
+	/**
+	 * Deletes a downloaded Google family that no slot uses. The bytes stay in memory for the Undo in the
+	 * notice; files already missing are only dropped from the list.
+	 */
+	async deleteDownload(family: string): Promise<void> {
+		const files = this.data.files[family];
+		if (!files || this.downloadUsers(family).length) return;
+		const adapter = this.app.vault.adapter;
+		const saved = new Map<string, ArrayBuffer>();
+		for (const file of new Set(files.faces.map((f) => f.file))) {
+			if (!(await adapter.exists(file))) continue;
+			saved.set(file, await adapter.readBinary(file));
+			await adapter.remove(file);
+		}
+		delete this.data.files[family];
+		this.estimates.clear();
+		await this.saveData(this.data);
+		this.onChange?.();
+		const folder = files.faces[0]?.file.split('/').slice(0, -1).join('/');
+		try {
+			// recursive: the desktop adapter cannot remove even an empty folder without it. Checked empty first.
+			if (folder && (await adapter.exists(folder)) && !(await adapter.list(folder)).files.length) await adapter.rmdir(folder, true);
+		} catch (e) {
+			console.error('Font Tailor: remove folder', folder, e);
+		}
+		notify(`Deleted ${family}`, () => void (async () => {
+			if (folder && !(await adapter.exists(folder))) await adapter.mkdir(folder);
+			for (const [file, buf] of saved) await adapter.writeBinary(file, buf);
+			this.data.files[family] = files;
+			this.estimates.clear();
+			await this.saveData(this.data);
+			this.onChange?.();
+		})());
+	}
+
 	private estimates = new Map<string, Promise<number>>();
 
 	/** Bytes that using this Google style would download now (files already on disk count as 0). */
 	estimate(family: string, tuples: string[]): Promise<number> {
 		const scripts = this.scripts;
 		const key = `${family}|${tuples.join(';')}|${scripts.join(',')}`;
+		const files = this.data.files[family];
+		// On disk already: Google renames files between font versions, so comparing file names alone overcounts.
+		if (files && tuples.every((x) => files.tuples.includes(x)) && scripts.every((s) => files.scripts.includes(s))) return Promise.resolve(0);
 		let p = this.estimates.get(key);
 		if (!p) {
 			p = (async () => {
@@ -288,20 +346,67 @@ export default class FontTailorPlugin extends Plugin {
 				}
 			}
 		}
-		this.body.apply([...this.docs].map((d) => d.body), this.data.slots, this.info);
+		this.body.apply([...this.docs].map((d) => d.body), this.slots, this.info, this.adjust());
 		if (JSON.stringify([...this.missing]) !== before) this.onChange?.();
+		void this.measureRatios();
+	}
+
+	/** font-size-adjust per slot (manual sizes and x-height matching); fonts not measured yet are left out. */
+	adjust(): Partial<Record<SlotId, number>> {
+		return sizeAdjust(this.slots, this.info, (r) => {
+			const v = this.ratios.get(ratioKey(r));
+			return v && v > 0 ? v : undefined;
+		}, this.data.matchXHeight !== false);
+	}
+
+	async setMatchXHeight(on: boolean): Promise<void> {
+		this.data.matchXHeight = on;
+		await this.commit();
+	}
+
+	/**
+	 * Measures the x-height of every font adjust() asks for, with a hidden 100ex box (the metric
+	 * font-size-adjust uses), and reapplies when a value changed. `all` re-measures known fonts too.
+	 */
+	private async measureRatios(all = false): Promise<void> {
+		const want = new Map<string, Resolved>();
+		sizeAdjust(this.slots, this.info, (r) => {
+			if (all || !this.ratios.has(ratioKey(r))) want.set(ratioKey(r), r);
+			return 1;
+		}, this.data.matchXHeight !== false);
+		if (!want.size) return;
+		const doc = this.app.workspace.containerEl.doc;
+		let changed = false;
+		for (const [key, r] of want) {
+			if (r.family) await doc.fonts.load(`${r.italic ? 'italic ' : ''}${r.weight} 100px "${r.family}"`, 'x').catch(() => []);
+			const probe = doc.body.createDiv();
+			probe.setCssStyles({ ...fontCss(r), position: 'absolute', visibility: 'hidden', fontSize: '100px', width: '100ex' });
+			const ratio = exRatio(probe.getBoundingClientRect().width, 100) ?? NaN;
+			probe.remove();
+			if (Object.is(ratio, this.ratios.get(key))) continue;
+			this.ratios.set(key, ratio);
+			changed = true;
+		}
+		if (!changed) return;
+		this.applyFonts();
+		this.onChange?.();
+	}
+
+	/** Slots that use the downloaded Google copy of a family. A local font of the same name does not count. */
+	downloadUsers(family: string): SlotId[] {
+		return (this.info(family)?.source ?? 'google') === 'google' ? usedBy(this.data.slots).get(family) ?? [] : [];
 	}
 
 	/** Does any slot currently resolve to this family? */
 	inUse(family: string): boolean {
-		return this.usedFamilies().has(family);
+		return this.usedFamilies(this.data.slots).has(family);
 	}
 
 	/** Family to the css2 tuples its slots need. */
-	private usedFamilies(): Map<string, Set<string>> {
+	private usedFamilies(values = this.slots): Map<string, Set<string>> {
 		const used = new Map<string, Set<string>>();
 		for (const id of SLOT_IDS) {
-			const r = resolve(this.data.slots, id, this.info);
+			const r = resolve(values, id, this.info);
 			const font = r.family ? this.info(r.family) : undefined;
 			if (!r.family || !font) continue;
 			const weight = font.weights.includes(r.weight) ? r.weight : nearestWeight(font.weights, r.weight);
@@ -321,7 +426,8 @@ export default class FontTailorPlugin extends Plugin {
 	private async syncNow(): Promise<void> {
 		const scripts = this.scripts;
 		let changed = false;
-		for (const [family, needed] of this.usedFamilies()) {
+		// Saved slots only: a picker draft never downloads.
+		for (const [family, needed] of this.usedFamilies(this.data.slots)) {
 			if ((this.info(family)?.source ?? 'google') !== 'google') continue;
 			const have = this.data.files[family];
 			const tuples = [...new Set([...(have?.tuples ?? []), ...needed])];
@@ -360,4 +466,9 @@ function notify(message: string, undo: () => void): void {
 		});
 	});
 	const notice = new Notice(frag, 6000);
+}
+
+/** One x-height ratio per font stack, weight and style. */
+function ratioKey(r: Resolved): string {
+	return `${fontStack(r)}|${r.weight}|${r.italic}`;
 }

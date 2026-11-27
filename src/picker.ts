@@ -1,11 +1,11 @@
-import { App, ButtonComponent, DropdownComponent, Modal, ToggleComponent, setIcon, setTooltip } from 'obsidian';
+import { App, ButtonComponent, DropdownComponent, Modal, SliderComponent, ToggleComponent, setIcon, setTooltip } from 'obsidian';
 import { tuple } from './fonts';
 import type FontTailorPlugin from './main';
 import { keepsBlock, missingScripts, scriptsOf } from './scripts';
 import { deviceOnly, sourceLabel } from './sources';
-import { FontInfo, SLOTS, SlotId, nearestWeight, parentOf, resolve, slotRole, styleName, weightName } from './slots';
+import { FontInfo, SIZE_MAX, SIZE_MIN, SLOTS, SlotId, SlotValue, downloadState, formatSize, inUseLabel, nearestWeight, parentOf, resolve, slotRole, styleName, tupleStyles, usedBy, usedFirst, weightName } from './slots';
 
-const CATS: [string, string][] = [['all', 'All'], ['mine', 'My fonts'], ['serif', 'Serif'], ['sans', 'Sans'], ['mono', 'Mono'], ['display', 'Display'], ['hand', 'Handwriting']];
+const CATS: [string, string][] = [['all', 'All'], ['mine', 'My fonts'], ['downloaded', 'Downloaded'], ['serif', 'Serif'], ['sans', 'Sans'], ['mono', 'Mono'], ['display', 'Display'], ['hand', 'Handwriting']];
 const CAT_LABEL: Record<string, string> = Object.fromEntries(CATS);
 const PAGE = 60;
 
@@ -18,6 +18,10 @@ export class FontPicker extends Modal {
 	private selFamily: string | null;
 	private weight: number;
 	private italic: boolean;
+	/** Manual size factor; undefined is Auto. */
+	private size: number | undefined;
+	/** The size slider was used, so the slot shows the picker's choice live until the picker closes. */
+	private drafting = false;
 	private fonts: FontInfo[] = [];
 	private list: FontInfo[] = [];
 	private rows = new Map<HTMLElement, FontInfo>();
@@ -35,6 +39,8 @@ export class FontPicker extends Modal {
 	/** Family to the labels of every source that has it. */
 	private sourcesOf = new Map<string, string[]>();
 	private mineToggle!: ToggleComponent;
+	/** Family to the slots that chose it. */
+	private used = new Map<string, SlotId[]>();
 	private moreObserver: IntersectionObserver | null = null;
 
 	constructor(app: App, private plugin: FontTailorPlugin, private slot: SlotId) {
@@ -44,6 +50,7 @@ export class FontPicker extends Modal {
 		this.selFamily = slots[slot]?.family ?? r.family;
 		this.weight = r.weight;
 		this.italic = r.italic;
+		this.size = slots[slot]?.size;
 		this.cat = slotRole(slot) === 'mono' ? 'mono' : 'all';
 	}
 
@@ -134,6 +141,7 @@ export class FontPicker extends Modal {
 	}
 
 	onClose(): void {
+		if (this.drafting) this.plugin.previewSlot(this.slot, null);
 		this.rowObserver?.disconnect();
 		this.moreObserver?.disconnect();
 		this.contentEl.empty();
@@ -180,10 +188,18 @@ export class FontPicker extends Modal {
 	private filtered(): FontInfo[] {
 		const q = this.query.trim().toLowerCase();
 		const mine = this.plugin.scripts;
-		return this.fonts.filter((f) =>
-			(this.cat === 'all' || f.category === this.cat || (this.cat === 'mine' && (f.source ?? 'google') !== 'google' && (!this.sourceFilter || this.label(f) === this.sourceFilter))) &&
+		const google = (f: FontInfo) => (f.source ?? 'google') === 'google';
+		return usedFirst(this.fonts.filter((f) =>
+			(this.cat === 'all' || f.category === this.cat ||
+				(this.cat === 'mine' && !google(f) && (!this.sourceFilter || this.label(f) === this.sourceFilter)) ||
+				(this.cat === 'downloaded' && google(f) && !!this.plugin.data.files[f.family])) &&
 			(!this.onlyMine || !missingScripts(f.subsets, mine).length) &&
-			(!q || f.family.toLowerCase().includes(q)));
+			(!q || f.family.toLowerCase().includes(q))), (f) => !!this.usedSlots(f));
+	}
+
+	/** The slots that chose this copy of the font, if any. */
+	private usedSlots(f: FontInfo): SlotId[] | undefined {
+		return this.isUsedCopy(f) ? this.used.get(f.family) : undefined;
 	}
 
 	private label(f: FontInfo): string {
@@ -214,6 +230,7 @@ export class FontPicker extends Modal {
 		this.moreObserver?.disconnect();
 		this.rows.clear();
 		this.listEl.empty();
+		this.used = usedBy(this.plugin.data.slots);
 		this.list = this.filtered();
 		this.shown = 0;
 		if (this.catalogFailed) {
@@ -252,6 +269,8 @@ export class FontPicker extends Modal {
 			const row = this.listEl.createDiv({ cls: ['ft-font-row', f.family === current && this.isUsedCopy(f) ? 'is-current' : ''], attr: { role: 'option' } });
 			const meta = row.createDiv('ft-font-row-meta');
 			meta.createEl('b', { text: f.family });
+			const slots = this.usedSlots(f);
+			if (slots) meta.createSpan({ cls: 'ft-badge mod-in-use', text: inUseLabel(slots) });
 			const tags = meta.createDiv('ft-tags');
 			const cat = CAT_LABEL[f.category];
 			tags.createSpan({ text: `${cat ? `${cat} · ` : ''}${f.weights.length} weight${f.weights.length > 1 ? 's' : ''}${f.italics.length ? ', italic' : ''}` });
@@ -352,17 +371,15 @@ export class FontPicker extends Modal {
 			setTooltip(icon, 'Only on this device. It does not sync; other devices fall back to Obsidian\'s font.');
 		}
 		const files = (f.source ?? 'google') === 'google' ? this.plugin.data.files[f.family] : undefined;
-		if (files) {
-			const total = f.weights.length + f.italics.length;
-			const partial = files.tuples.length < total;
-			const icon = tags.createSpan({ cls: ['ft-marker', 'mod-downloaded'], attr: { 'aria-label': partial ? 'Partly downloaded' : 'Downloaded' } });
-			setIcon(icon, partial ? 'circle-dashed' : 'circle-check');
-			const styles = files.tuples.map((t) => {
-				const [i = '0', w = '400'] = t.split(',');
-				return styleName(Number(w), i === '1');
-			});
+		const state = downloadState(files, f);
+		if (files && state) {
+			const partial = state === 'partial';
+			const badge = tags.createSpan({ cls: 'ft-badge mod-downloaded' });
+			setIcon(badge.createSpan('ft-badge-icon'), partial ? 'circle-dashed' : 'circle-check');
+			badge.appendText(partial ? 'Partly downloaded' : 'Downloaded');
+			const styles = tupleStyles(files.tuples);
 			const size = this.sizes.get(f.family);
-			setTooltip(icon, `${partial ? `Partly downloaded: ${styles.length} of ${total} styles` : 'Downloaded: all styles'}\n${styles.join(', ')}\n${scriptsOf(files.scripts).map((s) => s.name).join(', ')}${size ? `\n${formatSize(size)} in the vault` : ''}`);
+			setTooltip(badge, `${partial ? `${styles.length} of ${f.weights.length + f.italics.length} styles` : 'All styles'}: ${styles.join(', ')}\n${scriptsOf(files.scripts).map((s) => s.name).join(', ')}${size ? `\n${formatSize(size)} in the vault` : ''}`);
 		}
 	}
 
@@ -397,6 +414,8 @@ export class FontPicker extends Modal {
 		if (this.italic && !f.italics.includes(this.weight)) {
 			el.createSpan({ text: f.italics.length ? `No italic at ${this.weight}. Obsidian would slant it.` : 'No true italic. Obsidian would slant the upright.' });
 		}
+		this.renderSize(el);
+		if (this.drafting) this.plugin.previewSlot(this.slot, this.value(f), f);
 		if ((f.source ?? 'google') === 'google') {
 			const note = el.createSpan({ cls: 'ft-download-note' });
 			const t = tuple(this.weight, this.italic && f.italics.includes(this.weight));
@@ -409,15 +428,48 @@ export class FontPicker extends Modal {
 		this.applyBtn.setDisabled(false).setButtonText(`Use ${f.family} ${styleName(this.weight, this.italic)}`);
 	}
 
+	/** "Size: Auto" with a slider; dragging shows the size live in the notes and the settings preview. */
+	private renderSize(el: HTMLElement): void {
+		const box = el.createDiv({ cls: 'ft-size', attr: { role: 'group', 'aria-label': 'Size' } });
+		box.createSpan({ text: 'Size:' });
+		const valueEl = box.createSpan({ cls: 'ft-size-value' });
+		const slider = new SliderComponent(box).setLimits(SIZE_MIN * 100, SIZE_MAX * 100, 5).setValue(Math.round((this.size ?? 1) * 100));
+		slider.sliderEl.setAttr('aria-label', 'Size in percent');
+		const auto = box.createEl('button', { cls: 'ft-linkish', text: 'Auto', attr: { title: 'Back to the automatic size' } });
+		const show = () => {
+			valueEl.setText(this.size === undefined ? 'Auto' : `${Math.round(this.size * 100)}%`);
+			auto.toggle(this.size !== undefined);
+		};
+		const preview = () => {
+			show();
+			this.drafting = true;
+			if (this.sel) this.plugin.previewSlot(this.slot, this.value(this.sel), this.sel);
+		};
+		show();
+		slider.sliderEl.addEventListener('input', () => {
+			this.size = slider.getValue() / 100;
+			preview();
+		});
+		auto.addEventListener('click', () => {
+			this.size = undefined;
+			slider.setValue(100);
+			preview();
+		});
+	}
+
+	private value(f: FontInfo): SlotValue {
+		return { family: f.family, weight: this.weight, italic: this.italic, ...(this.size === undefined ? {} : { size: this.size }) };
+	}
+
 	private apply(): void {
 		const f = this.sel;
 		if (!f) return;
-		const value = { family: f.family, weight: this.weight, italic: this.italic };
+		const value = this.value(f);
+		const drafting = this.drafting;
+		this.drafting = false;
 		this.close();
-		void this.plugin.changeSlots((s) => (s[this.slot] = value), `${SLOTS[this.slot].name}: ${f.family} ${styleName(value.weight, value.italic)}`, f);
+		void this.plugin.changeSlots((s) => (s[this.slot] = value), `${SLOTS[this.slot].name}: ${f.family} ${styleName(value.weight, value.italic)}${value.size ? `, ${Math.round(value.size * 100)}%` : ''}`, f);
+		// changeSlots has stored the value already, so ending the draft shows no flash of the old one.
+		if (drafting) this.plugin.previewSlot(this.slot, null);
 	}
-}
-
-function formatSize(bytes: number): string {
-	return bytes < 1e6 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1048576).toFixed(1)} MB`;
 }

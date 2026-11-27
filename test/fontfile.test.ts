@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // Font file parsing on synthetic fonts built here, so no font files are needed. Run: npm test
 import assert from 'node:assert/strict';
 import { test } from 'node:test';

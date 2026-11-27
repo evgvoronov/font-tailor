@@ -29,7 +29,8 @@ const HEADINGS: SlotId[] = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
 export class BodyFonts {
 	private applied: { body: HTMLElement; props: string[]; classes: string[] }[] = [];
 
-	apply(bodies: HTMLElement[], values: SlotValues, info: FontLookup): void {
+	/** `adjust` is font-size-adjust per slot, from sizeAdjust(). */
+	apply(bodies: HTMLElement[], values: SlotValues, info: FontLookup, adjust: Partial<Record<SlotId, number>> = {}): void {
 		const props: Record<string, string> = {};
 		const classes: string[] = [];
 		for (const id of new Set([...Object.keys(CLASS_KEY), ...Object.keys(OBSIDIAN_VAR), ...HEADINGS] as SlotId[])) {
@@ -44,6 +45,8 @@ export class BodyFonts {
 				props[`--${id}-font`] = stack;
 				props[`--${id}-weight`] = weight;
 				props[`--${id}-style`] = style;
+				const a = adjust[id];
+				if (a) props[`--ft-${id}-adjust`] = String(a);
 			}
 			const key = CLASS_KEY[id];
 			if (key) {
@@ -51,8 +54,12 @@ export class BodyFonts {
 				props[`--ft-${key}-family`] = stack;
 				props[`--ft-${key}-weight`] = weight;
 				props[`--ft-${key}-style`] = style;
+				const a = adjust[id];
+				if (a) props[`--ft-${key}-adjust`] = String(a);
 			}
 		}
+		// Turns on the size rules in styles.css, which also stop one slot's size from reaching the next.
+		if (Object.keys(adjust).length) classes.push('ft-sized');
 		for (const body of bodies) {
 			body.setCssProps(props);
 			body.addClasses(classes);

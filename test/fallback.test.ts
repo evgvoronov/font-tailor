@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // Fallback chain checks, ported from the mockup's self-check. Run: npm test
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
