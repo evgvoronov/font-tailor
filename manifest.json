@@ -2,7 +2,7 @@
 	"id": "font-tailor",
 	"name": "Font Tailor",
 	"version": "0.0.1",
-	"minAppVersion": "1.0.0",
+	"minAppVersion": "1.8.7",
 	"description": "Pick free Google Fonts and override fonts per area (text, interface, monospace) and per style (bold, italic, headings).",
 	"author": "Evgenii Voronov",
 	"authorUrl": "",
