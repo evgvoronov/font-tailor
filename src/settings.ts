@@ -1,4 +1,4 @@
-import { App, ExtraButtonComponent, Menu, Platform, PluginSettingTab, Setting, setIcon } from 'obsidian';
+import { App, ButtonComponent, ExtraButtonComponent, Menu, Platform, PluginSettingTab, Setting, SettingDefinitionItem, requireApiVersion, setIcon } from 'obsidian';
 import { fontCss } from './apply';
 import type FontTailorPlugin from './main';
 import { DownloadsSection } from './downloads';
@@ -6,7 +6,10 @@ import { renderNote } from './note';
 import { FontPicker } from './picker';
 import { SourcesModal } from './sourcesModal';
 import { SCRIPTS, missingScripts, scriptsOf } from './scripts';
-import { AREAS, SLOTS, SlotId, controls, fakeNote, parentOf, resolve, styleName } from './slots';
+import { AREAS, SLOTS, SLOT_IDS, SlotId, controls, fakeNote, parentOf, resolve, styleName } from './slots';
+
+/** Settings search finds the tab by these. */
+const SEARCH_TERMS = ['My languages', 'Font sources', 'Match x-height of mixed fonts', 'Reset all overrides', 'Downloaded fonts', 'Google Fonts', 'Preview', ...SLOT_IDS.map((id) => SLOTS[id].name)];
 
 // Obsidian lists this tab under the manifest name, "Font Tailor".
 export class FontTailorSettingTab extends PluginSettingTab {
@@ -22,10 +25,47 @@ export class FontTailorSettingTab extends PluginSettingTab {
 		super(app, plugin);
 	}
 
+	/**
+	 * Obsidian 1.13+ renders the tab from this list and indexes it for settings search. The slots and the
+	 * pinned preview do not fit separate rows, so one row holds the whole layout and its aliases make each
+	 * setting findable. Older versions never call this and use display().
+	 */
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		return [{
+			name: 'Font slots and preview',
+			desc: 'Fonts per slot, languages, font sources, downloaded fonts.',
+			aliases: SEARCH_TERMS,
+			render: (setting) => {
+				setting.settingEl.empty();
+				setting.settingEl.addClass('ft-tab-row');
+				this.build(setting.settingEl);
+				return () => this.teardown();
+			},
+		}];
+	}
+
 	display(): void {
 		this.containerEl.empty();
-		// Listeners go on this child, so they are dropped with it on the next display().
-		const el = this.containerEl.createDiv('ft-tab');
+		this.build(this.containerEl);
+	}
+
+	hide(): void {
+		this.teardown();
+		super.hide();
+	}
+
+	private teardown(): void {
+		this.plugin.onChange = null;
+		this.plugin.preview.clear();
+		this.plugin.removeDoc(this.containerEl.doc);
+		this.containerEl.removeClass('ft-tab-host');
+	}
+
+	private build(parent: HTMLElement): void {
+		// Lets styles.css widen the settings column for this tab only.
+		this.containerEl.addClass('ft-tab-host');
+		// Listeners go on this child, so they are dropped with it on the next render.
+		const el = parent.createDiv('ft-tab');
 		const left = el.createDiv('ft-slots');
 		left.createEl('p', {
 			cls: 'ft-intro',
@@ -44,7 +84,7 @@ export class FontTailorSettingTab extends PluginSettingTab {
 			.addToggle((t) => t.setValue(this.plugin.data.matchXHeight !== false).onChange((v) => void this.plugin.setMatchXHeight(v)));
 		this.slotsEl = left.createDiv();
 		this.resetAll = new Setting(left).setName('Reset all overrides').addButton((b) =>
-			b.setButtonText('Reset all').setWarning().onClick(() => {
+			destructive(b).setButtonText('Reset all').onClick(() => {
 				const n = Object.keys(this.plugin.data.slots).length;
 				void this.plugin.changeSlots((s) => {
 					for (const k of Object.keys(s) as SlotId[]) delete s[k];
@@ -74,13 +114,6 @@ export class FontTailorSettingTab extends PluginSettingTab {
 		this.plugin.onChange = () => this.render();
 		this.plugin.addDoc(el.doc);
 		this.render();
-	}
-
-	hide(): void {
-		this.plugin.onChange = null;
-		this.plugin.preview.clear();
-		this.plugin.removeDoc(this.containerEl.doc);
-		this.containerEl.empty();
 	}
 
 	private render(): void {
@@ -237,4 +270,11 @@ export class FontTailorSettingTab extends PluginSettingTab {
 		e.preventDefault();
 		this.pick(t.dataset.slot as SlotId);
 	}
+}
+
+/** setDestructive() is Obsidian 1.13+; before that the same look comes from the mod-warning class. */
+function destructive(b: ButtonComponent): ButtonComponent {
+	if (requireApiVersion('1.13.0')) return b.setDestructive();
+	b.buttonEl.addClass('mod-warning');
+	return b;
 }

@@ -220,6 +220,9 @@ export default class FontTailorPlugin extends Plugin {
 	estimate(family: string, tuples: string[]): Promise<number> {
 		const scripts = this.scripts;
 		const key = `${family}|${tuples.join(';')}|${scripts.join(',')}`;
+		const files = this.data.files[family];
+		// On disk already: Google renames files between font versions, so comparing file names alone overcounts.
+		if (files && tuples.every((x) => files.tuples.includes(x)) && scripts.every((s) => files.scripts.includes(s))) return Promise.resolve(0);
 		let p = this.estimates.get(key);
 		if (!p) {
 			p = (async () => {

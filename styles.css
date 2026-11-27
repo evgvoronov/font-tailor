@@ -65,12 +65,28 @@ body.ft-code-block .markdown-rendered pre code {
 
 /* ---------- Settings tab ---------- */
 
-/* Obsidian 1.15 centers settings in a narrow column; this tab needs the width for its preview. */
-.vertical-tab-content:has(> .ft-tab),
-.modal.mod-settings .vertical-tab-content:not(.setting-page):has(> .ft-tab) {
+/* Obsidian 1.15 centers settings in a narrow column; this tab needs the width for its preview.
+   settings.ts sets ft-tab-host on the tab's content element. */
+.vertical-tab-content.ft-tab-host,
+.modal.mod-settings .vertical-tab-content.ft-tab-host {
 	--setting-group-center-offset: 0px;
 	padding-inline: var(--size-4-8);
 	container-type: inline-size;
+}
+/* Obsidian 1.13+ renders the tab as one setting row (see getSettingDefinitions); drop the card and the
+   700px cap around it. overflow stays visible so the preview can stick. */
+.ft-tab-host > .setting-group,
+.ft-tab-host > .setting-group > .setting-items,
+.ft-tab-host .setting-item.ft-tab-row {
+	display: block;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: none;
+	box-shadow: none;
+	overflow: visible;
+	max-width: none;
 }
 .ft-tab {
 	display: grid;
@@ -88,8 +104,9 @@ body.ft-code-block .markdown-rendered pre code {
 	max-width: 60ch;
 }
 
-/* Flat rows as in the mockup, also where Obsidian draws setting items as cards. */
-.ft-slots .setting-item {
+/* Flat rows as in the mockup, also where Obsidian draws setting items as cards.
+   .ft-tab ties with Obsidian's ".setting-group .setting-item:not(...)" when 1.13+ wraps the tab in a group. */
+.ft-tab .ft-slots .setting-item {
 	background: none;
 	border-radius: 0;
 	box-shadow: none;
@@ -640,8 +657,8 @@ button.ft-undo:hover {
 	}
 }
 @media (prefers-reduced-motion: reduce) {
-	.ft-tab *,
-	.ft-picker * {
-		transition: none !important;
+	.ft-expander svg,
+	.ft-note [data-slot] {
+		transition: none;
 	}
 }

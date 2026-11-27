@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // Matching x-height of mixed fonts. Run: npm test
 import assert from 'node:assert/strict';
 import { test } from 'node:test';

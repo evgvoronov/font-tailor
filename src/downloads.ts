@@ -57,7 +57,7 @@ export class DownloadsSection {
 			let total = 0;
 			for (const [family, bytes] of sizes) {
 				total += bytes;
-				sizeEls.get(family)?.setText(`${formatSize(bytes)} · `);
+				sizeEls.get(family)?.setText(`${bytes ? formatSize(bytes) : 'Files missing'} · `);
 			}
 			head.setDesc(`${count}, ${formatSize(total)} in the vault`);
 		}).catch((e) => console.error('Font Tailor: disk sizes', e));

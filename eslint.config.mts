@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import obsidianmd from 'eslint-plugin-obsidianmd';
 import { DEFAULT_BRANDS } from 'eslint-plugin-obsidianmd/dist/lib/rules/ui/brands.js';
 import globals from 'globals';

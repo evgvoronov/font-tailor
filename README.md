@@ -10,13 +10,19 @@ Change the fonts Obsidian uses, either broadly or one style at a time. Pick from
 - **Per-style overrides.** Give italic, bold, bold italic, each heading level H1 to H6, inline code and code blocks their own family, weight and italic.
 - **Fallback chain.** An empty slot uses the slot it hangs under, so one font for text already covers italic, bold and headings. Bold italic uses Bold if Bold is set, otherwise Italic, otherwise Text. Text, Interface and Monospace use Obsidian's own font when empty.
 - **Live preview.** A sample note next to the slots shows every change. Hover a slot to see what it affects, or select part of the note to pick its font.
-- **Google Fonts picker.** Search and filter the catalog (serif, sans, mono, display, handwriting), preview each font in your own languages, pick a weight and italic, and see the download size before you apply it.
+- **Google Fonts picker.** Search and filter the catalog (serif, sans, mono, display, handwriting), preview each font in your own languages, pick a weight and italic, and see the download size before you apply it. Fonts your slots use come first in every list, labeled with the slots ("In use: Text, Italic"). The **Downloaded** filter lists the Google fonts already in the vault.
+- **Downloaded fonts.** A collapsed section at the bottom of the settings lists every downloaded Google family: size on disk, the styles and scripts downloaded, and which slots use it. Families no slot uses can be deleted, with Undo.
+- **Matching x-height.** When italic, bold, bold italic or inline code use another font than the text, the plugin scales that font so its lowercase letters are as tall as the text's. A handwriting italic next to a monospace text no longer looks tiny. Turn it off with **Match x-height of mixed fonts**.
 - **Your languages.** Tell the plugin which scripts you write in (Latin, Cyrillic, Greek, CJK, Thai and others). The picker shows a sample line for each, can hide fonts that miss one, and a slot warns when its font lacks a script.
 - **Your own fonts.** Use TTF, OTF, WOFF and WOFF2 files from vault folders, import font files into the vault, and on desktop use folders outside the vault and the fonts installed on your computer.
 
-![Settings: the slot tree on the left and the preview note on the right](design/screenshots/v1/settings-1920.png)
+![Settings: the slot tree on the left and the preview note on the right](design/screenshots/v3/settings-wide.png)
 
-![The font picker with Lora selected, showing samples in Latin, Cyrillic, Greek and Thai](design/screenshots/v2/picker-sources.png)
+![The font picker with the Downloaded filter: the fonts in use come first, each labeled with its slots](design/screenshots/v3/picker-downloaded.png)
+
+![Downloaded fonts in the settings: size, styles, scripts and the slots that use each family](design/screenshots/v3/downloaded-fonts.png)
+
+![A Caveat italic in JetBrains Mono text, with Match x-height off and on](design/screenshots/v3/x-height.png)
 
 ## How to use
 
@@ -48,7 +54,7 @@ The plugin works on mobile, except for two font sources that need file system ac
 - **Folders on this device** read font files from folders outside the vault that you add yourself.
 - **Installed fonts** lists the fonts installed on the computer, through the Local Font Access API or, when it is not available, by reading the operating system's font folders (for example `C:\Windows\Fonts` and your user font folder on Windows, `/Library/Fonts` and `~/Library/Fonts` on macOS, `/usr/share/fonts` and `~/.local/share/fonts` on Linux).
 
-These two sources are the only places the plugin reads files outside the vault, and it only reads font files there. Fonts from them do not sync. On another device, a slot that uses one falls back to Obsidian's font and says why.
+These two sources are the only places the plugin touches files outside the vault. There it lists the folders you added (and the operating system's font folders) and reads font files. It never writes, moves or deletes anything outside the vault. Fonts from them do not sync. On another device, a slot that uses one falls back to Obsidian's font and says why.
 
 ## Network use
 
@@ -66,7 +72,7 @@ The requests contain only font family names, weights, styles and subsets. Nothin
 - `<config folder>/plugins/font-tailor/data.json`: settings.
 - `fonts/` in the vault root: font files you import.
 
-`<config folder>` is usually `.obsidian`. Downloaded and imported files stay in the vault after you remove an override or disable the plugin; delete them by hand if you no longer need them.
+`<config folder>` is usually `.obsidian`. Downloaded and imported files stay in the vault after you remove an override or disable the plugin. Delete downloaded fonts no slot uses in **Settings → Font Tailor → Downloaded fonts**; delete imported files by hand.
 
 ## Manual install
 
@@ -80,9 +86,9 @@ Needs Node.js 18 or newer (tests need 22.6 or newer).
 - `npm run dev` rebuilds `main.js` from `src/main.ts` on every change.
 - `npm run build` type-checks and makes a production build.
 - `npm run lint` runs ESLint with the Obsidian rules.
-- `npm test` checks the fallback chain and the font file parser (`test/`).
+- `npm test` checks the fallback chain, the font file parser, the "in use" and "downloaded" logic and the x-height maths (`test/`).
 
-Source map: `slots.ts` (slot tree and fallback chain), `scripts.ts` (writing systems and samples), `catalog.ts` (font list), `fonts.ts` (downloads and font faces), `fontfile.ts` (font table parser), `sources.ts` and `sourcesModal.ts` (local font sources), `apply.ts` (body classes and CSS variables; the selectors are in `styles.css`), `settings.ts`, `picker.ts`, `note.ts` (preview).
+Source map: `slots.ts` (slot tree, fallback chain, fonts in use, x-height matching), `scripts.ts` (writing systems and samples), `catalog.ts` (font list), `fonts.ts` (downloads and font faces), `fontfile.ts` (font table parser), `sources.ts` and `sourcesModal.ts` (local font sources), `apply.ts` (body classes and CSS variables; the selectors are in `styles.css`), `settings.ts`, `downloads.ts` (downloaded fonts section), `picker.ts`, `note.ts` (preview).
 
 ## Releasing
 
