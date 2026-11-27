@@ -1,0 +1,852 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Font Tailor settings</title>
+<!--
+  Clickable mockup of the Font Tailor settings tab. Mock data only.
+  URL params for fixed states (used for screenshots):
+    ?preset=broad|precise|empty   ?open=text,headings   ?picker=text.italic   ?lang=ru|en
+-->
+<style>
+/* Obsidian dark theme tokens: real variable names, values close to the default theme. */
+:root {
+  --background-primary: #1e1e1e;
+  --background-primary-alt: #242424;
+  --background-secondary: #262626;
+  --background-secondary-alt: #2c2c2c;
+  --background-modifier-border: #363636;
+  --background-modifier-border-hover: #4a4a4a;
+  --background-modifier-border-focus: #5c5c5c;
+  --background-modifier-hover: rgba(255, 255, 255, 0.075);
+  --background-modifier-active-hover: rgba(138, 92, 245, 0.15);
+  --background-modifier-form-field: #2a2a2a;
+  --background-modifier-cover: rgba(10, 10, 10, 0.6);
+  --background-modifier-error: #fb464c;
+  --interactive-normal: #363636;
+  --interactive-hover: #3f3f3f;
+  --interactive-accent: #8a5cf5;
+  --interactive-accent-hover: #9d76f7;
+  --text-normal: #dadada;
+  --text-muted: #b3b3b3;
+  --text-faint: #8a8a8a;
+  --text-accent: #a68af9;
+  --text-on-accent: #ffffff;
+  --text-error: #fb464c;
+  --text-highlight-bg: rgba(255, 208, 0, 0.4);
+  --code-background: #262626;
+  --code-normal: #dadada;
+  --color-red: #fb464c;
+  --titlebar-background: #202020;
+  --ribbon-background: #262626;
+  --tab-container-background: #262626;
+  --modal-background: #1e1e1e;
+  --modal-border-color: #3f3f3f;
+  --toggle-thumb-color: #ffffff;
+  --radius-s: 4px;
+  --radius-m: 8px;
+  --radius-l: 12px;
+  --font-ui-smaller: 12px;
+  --font-ui-small: 13px;
+  --font-ui-medium: 15px;
+  --font-ui-large: 20px;
+  --font-default: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-monospace-default: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
+  /* These three are what the plugin would override. JS sets them from the slots. */
+  --font-interface: var(--font-default);
+  --font-text: var(--font-default);
+  --font-monospace: var(--font-monospace-default);
+  --shadow-l: 0 14px 62px rgba(0, 0, 0, 0.5);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: #141414;
+  color: var(--text-normal);
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-small);
+  -webkit-font-smoothing: antialiased;
+}
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
+svg.icon { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+/* ---------- Obsidian window behind the modal ---------- */
+.app { position: fixed; inset: 0; display: grid; grid-template-rows: 36px 1fr; background: var(--background-primary); }
+.titlebar { background: var(--titlebar-background); display: flex; align-items: center; padding-left: 52px; gap: 2px; border-bottom: 1px solid var(--background-modifier-border); }
+.titlebar .tab { height: 28px; margin-top: 8px; padding: 0 14px; display: flex; align-items: center; background: var(--background-primary); border-radius: 6px 6px 0 0; color: var(--text-normal); font-size: var(--font-ui-small); }
+.workspace { display: grid; grid-template-columns: 44px 260px 1fr; min-height: 0; }
+.ribbon { background: var(--ribbon-background); border-right: 1px solid var(--background-modifier-border); display: flex; flex-direction: column; align-items: center; gap: 14px; padding-top: 12px; color: var(--text-muted); }
+.filetree { background: var(--background-secondary); border-right: 1px solid var(--background-modifier-border); padding: 12px 8px; font-size: var(--font-ui-small); color: var(--text-muted); }
+.filetree div { padding: 4px 10px; border-radius: var(--radius-s); }
+.filetree .is-active { background: var(--background-modifier-hover); color: var(--text-normal); }
+.filetree .folder { color: var(--text-normal); }
+.editor { padding: 48px 72px; font-family: var(--font-text); font-size: 16px; line-height: 1.5; color: var(--text-normal); overflow: hidden; }
+.editor h1 { font-size: 2em; margin: 0 0 16px; }
+
+/* ---------- Settings modal ---------- */
+.modal-container { position: fixed; inset: 0; display: grid; place-items: center; z-index: 10; }
+.modal-bg { position: absolute; inset: 0; background: var(--background-modifier-cover); }
+.modal.mod-settings {
+  position: relative; display: grid; grid-template-columns: 220px 1fr;
+  width: min(1100px, calc(100vw - 48px)); height: min(780px, calc(100vh - 48px));
+  background: var(--modal-background); border: 1px solid var(--modal-border-color);
+  border-radius: var(--radius-l); box-shadow: var(--shadow-l); overflow: hidden;
+}
+.modal-close-button { position: absolute; top: 10px; right: 10px; z-index: 2; width: 28px; height: 28px; display: grid; place-items: center; border: 0; background: none; color: var(--text-muted); border-radius: var(--radius-s); }
+.modal-close-button:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.vertical-tab-header { background: var(--background-secondary); padding: 24px 12px; overflow-y: auto; border-right: 1px solid var(--background-modifier-border); }
+.vertical-tab-header-group-title { font-size: var(--font-ui-smaller); color: var(--text-muted); font-weight: 600; padding: 14px 10px 6px; }
+.vertical-tab-nav-item { padding: 5px 10px; border-radius: var(--radius-s); color: var(--text-muted); font-size: var(--font-ui-small); cursor: default; }
+.vertical-tab-nav-item:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.vertical-tab-nav-item.is-active { background: var(--background-modifier-active-hover); color: var(--text-normal); }
+.vertical-tab-content { overflow-y: auto; padding: 32px 32px 40px; }
+
+/* Font Tailor tab: slots on the left, the sample note pinned on the right. */
+.ft-tab { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 28px; align-items: start; }
+.ft-head h1 { font-size: var(--font-ui-large); font-weight: 600; margin: 0 0 6px; }
+.ft-head p { margin: 0 0 20px; color: var(--text-muted); line-height: 1.5; max-width: 52ch; }
+
+/* Obsidian setting-item, extended into a tree of slots. */
+.setting-item { display: flex; align-items: center; gap: 16px; padding: 12px 0; border-top: 1px solid var(--background-modifier-border); }
+.setting-item-info { flex: 1; min-width: 0; }
+.setting-item-name { font-size: var(--font-ui-medium); color: var(--text-normal); display: flex; align-items: center; gap: 8px; }
+.setting-item-description { font-size: var(--font-ui-smaller); color: var(--text-muted); padding-top: 3px; line-height: 1.4; }
+.setting-item-control { display: flex; align-items: center; gap: 6px; flex: none; }
+
+.ft-area { border-top: 1px solid var(--background-modifier-border); }
+.ft-area > .setting-item { border-top: 0; }
+.ft-area.is-hl > .setting-item .ft-font-btn, .ft-child.is-hl .ft-font-btn { border-color: var(--interactive-accent); }
+.ft-expander { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; padding: 2px 6px 2px 2px; margin-left: -2px; border-radius: var(--radius-s); color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.ft-expander:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.ft-expander svg { width: 14px; height: 14px; transition: transform 120ms ease; }
+.ft-area.is-open .ft-expander svg { transform: rotate(90deg); }
+.ft-children { display: none; margin: 0 0 12px 7px; padding-left: 17px; border-left: 1px solid var(--background-modifier-border); }
+.ft-area.is-open .ft-children { display: block; }
+.ft-child { display: flex; align-items: center; gap: 12px; padding: 6px 0; }
+.ft-child .setting-item-name { font-size: var(--font-ui-small); }
+.ft-child .setting-item-description { padding-top: 1px; }
+
+.ft-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--interactive-accent); flex: none; }
+.ft-count { color: var(--text-accent); }
+
+.ft-font-btn {
+  display: flex; align-items: baseline; gap: 8px; min-width: 0; width: 212px; height: 34px; padding: 0 10px;
+  background: var(--interactive-normal); border: 1px solid transparent; border-radius: var(--radius-s);
+  text-align: left; overflow: hidden;
+}
+.ft-child .ft-font-btn { width: 196px; height: 30px; }
+.ft-font-btn:hover { background: var(--interactive-hover); }
+.ft-font-btn .ft-family { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 32px; }
+.ft-child .ft-font-btn .ft-family { font-size: 14px; line-height: 28px; }
+.ft-font-btn .ft-style { font-size: var(--font-ui-smaller); color: var(--text-muted); white-space: nowrap; margin-left: auto; font-family: var(--font-interface); font-style: normal; font-weight: 400; }
+.ft-font-btn.is-inherited { background: transparent; border: 1px dashed var(--background-modifier-border-hover); }
+.ft-font-btn.is-inherited .ft-family { color: var(--text-muted); }
+.ft-font-btn.is-inherited:hover { background: var(--background-modifier-hover); }
+
+.clickable-icon { width: 28px; height: 28px; display: grid; place-items: center; border: 0; background: none; color: var(--text-muted); border-radius: var(--radius-s); }
+.clickable-icon:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.clickable-icon[hidden] { display: grid; visibility: hidden; }
+
+button.mod-cta { background: var(--interactive-accent); color: var(--text-on-accent); border: 0; border-radius: var(--radius-s); height: 32px; padding: 0 14px; font-weight: 500; }
+button.mod-cta:hover { background: var(--interactive-accent-hover); }
+button.mod-plain { background: var(--interactive-normal); border: 0; border-radius: var(--radius-s); height: 32px; padding: 0 14px; }
+button.mod-plain:hover { background: var(--interactive-hover); }
+button.mod-warning { background: transparent; color: var(--text-error); border: 1px solid rgba(251, 70, 76, 0.45); border-radius: var(--radius-s); height: 32px; padding: 0 14px; }
+button.mod-warning:hover { background: rgba(251, 70, 76, 0.12); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+.ft-footer { margin-top: 24px; }
+
+/* ---------- Preview: a sample note ---------- */
+.ft-preview { position: sticky; top: 0; }
+.ft-preview-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.ft-preview-bar h2 { font-size: var(--font-ui-small); font-weight: 600; margin: 0; color: var(--text-muted); }
+.seg { display: inline-flex; background: var(--background-modifier-form-field); border-radius: var(--radius-s); padding: 2px; }
+.seg button { border: 0; background: none; padding: 2px 10px; border-radius: 3px; font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.seg button[aria-pressed="true"] { background: var(--interactive-normal); color: var(--text-normal); }
+.note { border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); overflow: hidden; background: var(--background-primary); }
+.note-tabbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--tab-container-background); border-bottom: 1px solid var(--background-modifier-border); font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.note-tabbar .crumb-cur { color: var(--text-normal); }
+.note-body { padding: 18px 20px 20px; font-size: 15px; line-height: 1.55; }
+.note-body h1, .note-body h2, .note-body h3 { margin: 0 0 8px; line-height: 1.2; }
+.note-body h1 { font-size: 1.8em; }
+.note-body h2 { font-size: 1.4em; margin-top: 16px; }
+.note-body h3 { font-size: 1.15em; margin-top: 14px; }
+.note-body p { margin: 0 0 8px; }
+.note-body code.inline { background: var(--code-background); padding: 1px 4px; border-radius: var(--radius-s); font-size: 0.88em; }
+.note-body pre { background: var(--code-background); padding: 10px 12px; border-radius: var(--radius-s); margin: 12px 0 0; font-size: 12.5px; line-height: 1.5; overflow-x: auto; }
+.note-body pre .c { color: #8a8a8a; }
+.note-body pre .k { color: #e9973f; }
+.note-body pre .s { color: #44cf6e; }
+[data-slot] { cursor: pointer; border-radius: 3px; transition: box-shadow 120ms ease, background-color 120ms ease; }
+[data-slot].is-hl { box-shadow: 0 0 0 2px var(--interactive-accent); background-color: var(--background-modifier-active-hover); }
+.ft-legend { margin-top: 10px; color: var(--text-faint); font-size: var(--font-ui-smaller); line-height: 1.45; }
+
+/* ---------- Picker modal ---------- */
+.picker-container { position: fixed; inset: 0; z-index: 20; display: none; place-items: center; }
+.picker-container.is-open { display: grid; }
+.picker {
+  position: relative; width: min(680px, calc(100vw - 32px)); height: min(640px, calc(100vh - 32px));
+  display: grid; grid-template-rows: auto auto 1fr auto; background: var(--modal-background);
+  border: 1px solid var(--modal-border-color); border-radius: var(--radius-l); box-shadow: var(--shadow-l); overflow: hidden;
+}
+.picker-head { padding: 18px 20px 12px; }
+.picker-head h2 { margin: 0; font-size: 17px; font-weight: 600; }
+.picker-head p { margin: 4px 0 0; color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.picker-tools { padding: 0 20px 12px; display: grid; gap: 10px; border-bottom: 1px solid var(--background-modifier-border); }
+.search { position: relative; }
+.search svg { position: absolute; left: 10px; top: 9px; color: var(--text-muted); }
+input[type="text"], input[type="search"] {
+  width: 100%; height: 34px; padding: 0 10px; background: var(--background-modifier-form-field);
+  border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); outline: none;
+}
+input[type="search"] { padding-left: 34px; }
+input:focus { border-color: var(--interactive-accent); }
+input::placeholder { color: var(--text-faint); }
+.tool-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.chip { height: 26px; padding: 0 10px; border: 0; border-radius: 13px; background: var(--interactive-normal); color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.chip:hover { color: var(--text-normal); background: var(--interactive-hover); }
+.chip[aria-pressed="true"] { background: var(--text-normal); color: var(--background-primary); }
+.toggle-label { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; font-size: var(--font-ui-smaller); color: var(--text-muted); cursor: pointer; }
+.checkbox-container { width: 34px; height: 20px; border-radius: 10px; background: var(--interactive-normal); position: relative; transition: background 120ms; border: 0; padding: 0; flex: none; }
+.checkbox-container::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--toggle-thumb-color); transition: transform 120ms; }
+.checkbox-container.is-enabled { background: var(--interactive-accent); }
+.checkbox-container.is-enabled::after { transform: translateX(14px); }
+.checkbox-container:disabled { opacity: 0.4; }
+.sample-row { display: flex; align-items: center; gap: 10px; }
+.sample-row label { font-size: var(--font-ui-smaller); color: var(--text-muted); flex: none; }
+
+.font-list { overflow-y: auto; padding: 6px 8px; }
+.font-row { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 8px 12px 10px; border-radius: var(--radius-m); }
+.font-row:hover { background: var(--background-modifier-hover); }
+.font-row.is-selected { background: var(--background-modifier-active-hover); }
+.font-row-meta { display: flex; gap: 8px; font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.font-row-meta b { font-weight: 600; color: var(--text-normal); }
+.font-row-meta .tags { margin-left: auto; }
+.font-row-sample { font-size: 22px; line-height: 1.35; padding-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-normal); }
+.font-row.is-current .font-row-meta b::after { content: " · current"; font-weight: 400; color: var(--text-accent); }
+.list-empty { padding: 40px 20px; text-align: center; color: var(--text-muted); line-height: 1.6; }
+.list-empty button { margin-top: 10px; }
+
+.picker-foot { border-top: 1px solid var(--background-modifier-border); padding: 12px 20px 14px; display: grid; gap: 10px; background: var(--background-secondary); }
+.style-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-height: 30px; }
+.style-row > span { font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.weights { display: flex; gap: 2px; background: var(--background-modifier-form-field); padding: 2px; border-radius: var(--radius-s); }
+.weights button { border: 0; background: none; height: 26px; min-width: 38px; padding: 0 6px; border-radius: 3px; font-size: 14px; color: var(--text-muted); }
+.weights button:hover { color: var(--text-normal); }
+.weights button[aria-pressed="true"] { background: var(--interactive-normal); color: var(--text-normal); }
+.style-note { font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.foot-actions { display: flex; align-items: center; gap: 8px; }
+.foot-actions .spacer { flex: 1; }
+.foot-actions .linkish { border: 0; background: none; color: var(--text-muted); font-size: var(--font-ui-smaller); padding: 4px 0; text-decoration: underline; text-underline-offset: 3px; }
+.foot-actions .linkish:hover { color: var(--text-normal); }
+
+/* Obsidian notice */
+.notice-container { position: fixed; top: 48px; right: 16px; z-index: 30; display: grid; gap: 8px; }
+.notice { background: var(--background-secondary-alt); border: 1px solid var(--background-modifier-border); border-radius: var(--radius-m); padding: 10px 14px; box-shadow: 0 6px 20px rgba(0,0,0,.4); display: flex; gap: 14px; align-items: center; font-size: var(--font-ui-small); }
+.notice button { border: 0; background: none; color: var(--text-accent); padding: 0; font-weight: 500; }
+
+/* Narrow settings (small window, mobile): preview goes above the slots. */
+@media (max-width: 1000px) {
+  .modal.mod-settings { grid-template-columns: minmax(0, 1fr); width: 100vw; height: 100vh; border-radius: 0; }
+  .vertical-tab-header { display: none; }
+  .vertical-tab-content { padding: 48px 16px 32px; }
+  .ft-tab { grid-template-columns: minmax(0, 1fr); }
+  .ft-preview { position: static; order: -1; }
+}
+@media (max-width: 560px) {
+  .setting-item, .ft-child { flex-wrap: wrap; }
+  .setting-item-control { width: 100%; }
+  .ft-font-btn, .ft-child .ft-font-btn { flex: 1; width: auto; }
+  .picker { width: 100vw; height: 100vh; border-radius: 0; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="app" aria-hidden="true">
+  <div class="titlebar"><div class="tab">Дневник шрифтов</div></div>
+  <div class="workspace">
+    <div class="ribbon"></div>
+    <div class="filetree">
+      <div class="folder">Заметки</div>
+      <div class="is-active">&nbsp;&nbsp;Дневник шрифтов</div>
+      <div>&nbsp;&nbsp;Книги 2026</div>
+      <div>&nbsp;&nbsp;Встречи</div>
+      <div class="folder">Проекты</div>
+      <div>&nbsp;&nbsp;Font Tailor</div>
+    </div>
+    <div class="editor"><h1>Дневник шрифтов</h1><p>Обычный текст заметки. Здесь видно, как шрифт ведёт себя в длинном абзаце, когда настроек много и хочется понять, что именно поменялось.</p></div>
+  </div>
+</div>
+
+<div class="modal-container">
+  <div class="modal-bg"></div>
+  <div class="modal mod-settings" role="dialog" aria-label="Settings">
+    <button class="modal-close-button" aria-label="Close settings"><svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    <nav class="vertical-tab-header" aria-label="Settings sections">
+      <div class="vertical-tab-header-group-title">Options</div>
+      <div class="vertical-tab-nav-item">General</div>
+      <div class="vertical-tab-nav-item">Editor</div>
+      <div class="vertical-tab-nav-item">Files and links</div>
+      <div class="vertical-tab-nav-item">Appearance</div>
+      <div class="vertical-tab-nav-item">Hotkeys</div>
+      <div class="vertical-tab-nav-item">Core plugins</div>
+      <div class="vertical-tab-nav-item">Community plugins</div>
+      <div class="vertical-tab-header-group-title">Community plugins</div>
+      <div class="vertical-tab-nav-item">Calendar</div>
+      <div class="vertical-tab-nav-item">Dataview</div>
+      <div class="vertical-tab-nav-item is-active" aria-current="page">Font Tailor</div>
+      <div class="vertical-tab-nav-item">Templater</div>
+    </nav>
+    <div class="vertical-tab-content">
+      <div class="ft-tab">
+        <div class="ft-slots">
+          <div class="ft-head">
+            <h1>Font Tailor</h1>
+            <p>Pick fonts from Google Fonts. An empty slot uses the slot it hangs under, so one font for Text already covers italic, bold and headings.</p>
+          </div>
+          <div id="slots"></div>
+          <div class="setting-item ft-footer">
+            <div class="setting-item-info">
+              <div class="setting-item-name">Reset all overrides</div>
+              <div class="setting-item-description" id="reset-all-desc"></div>
+            </div>
+            <div class="setting-item-control"><button class="mod-warning" id="reset-all">Reset all</button></div>
+          </div>
+        </div>
+        <aside class="ft-preview" aria-label="Preview">
+          <div class="ft-preview-bar">
+            <h2>Preview</h2>
+            <div class="seg" role="group" aria-label="Sample language">
+              <button data-lang="ru">RU</button><button data-lang="en">EN</button>
+            </div>
+          </div>
+          <div class="note" id="note"></div>
+          <div class="ft-legend">Hover a slot to see what it changes here. Select any part of the note to pick its font.</div>
+        </aside>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="picker-container" id="picker-container">
+  <div class="modal-bg" id="picker-bg"></div>
+  <div class="picker" role="dialog" aria-modal="true" aria-labelledby="picker-title">
+    <button class="modal-close-button" id="picker-close" aria-label="Close font picker"><svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    <div class="picker-head">
+      <h2 id="picker-title"></h2>
+      <p id="picker-sub"></p>
+    </div>
+    <div class="picker-tools">
+      <div class="search">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" id="picker-search" aria-label="Search fonts" autocomplete="off">
+      </div>
+      <div class="tool-row">
+        <div class="chips" id="picker-cats" role="group" aria-label="Category"></div>
+        <label class="toggle-label" id="cyr-label">Cyrillic only <button class="checkbox-container" id="cyr-toggle" role="switch" aria-checked="true" aria-labelledby="cyr-label"></button></label>
+      </div>
+      <div class="sample-row">
+        <label for="picker-sample">Sample</label>
+        <input type="text" id="picker-sample">
+      </div>
+    </div>
+    <div class="font-list" id="font-list" role="listbox" aria-label="Fonts"></div>
+    <div class="picker-foot">
+      <div class="style-row" id="style-row"></div>
+      <div class="foot-actions">
+        <button class="linkish" id="picker-clear"></button>
+        <span class="spacer"></span>
+        <button class="mod-plain" id="picker-cancel">Cancel</button>
+        <button class="mod-cta" id="picker-apply">Use font</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="notice-container" id="notices"></div>
+
+<script>
+// ---------- Mock catalogue: real Google Fonts, metadata trimmed to what the picker shows ----------
+// c: category, cyr: has a Cyrillic subset, w: weights loaded here, i: has true italics.
+const FONTS = [
+  { f: 'Inter', c: 'sans', cyr: 1, w: [300, 400, 500, 600, 700, 800], i: 1 },
+  { f: 'Roboto', c: 'sans', cyr: 1, w: [300, 400, 500, 700, 900], i: 1 },
+  { f: 'Open Sans', c: 'sans', cyr: 1, w: [300, 400, 500, 600, 700, 800], i: 1 },
+  { f: 'Montserrat', c: 'sans', cyr: 1, w: [300, 400, 500, 600, 700, 800], i: 1 },
+  { f: 'Golos Text', c: 'sans', cyr: 1, w: [400, 500, 600, 700, 800], i: 0 },
+  { f: 'Manrope', c: 'sans', cyr: 1, w: [300, 400, 500, 600, 700, 800], i: 0 },
+  { f: 'PT Sans', c: 'sans', cyr: 1, w: [400, 700], i: 1 },
+  { f: 'Work Sans', c: 'sans', cyr: 0, w: [300, 400, 500, 600, 700], i: 1 },
+  { f: 'Literata', c: 'serif', cyr: 1, w: [300, 400, 500, 600, 700, 800], i: 1 },
+  { f: 'Lora', c: 'serif', cyr: 1, w: [400, 500, 600, 700], i: 1 },
+  { f: 'PT Serif', c: 'serif', cyr: 1, w: [400, 700], i: 1 },
+  { f: 'Merriweather', c: 'serif', cyr: 1, w: [300, 400, 700, 900], i: 1 },
+  { f: 'Source Serif 4', c: 'serif', cyr: 1, w: [300, 400, 500, 600, 700], i: 1 },
+  { f: 'EB Garamond', c: 'serif', cyr: 1, w: [400, 500, 600, 700, 800], i: 1 },
+  { f: 'Crimson Pro', c: 'serif', cyr: 0, w: [300, 400, 500, 600, 700], i: 1 },
+  { f: 'Playfair Display', c: 'serif', cyr: 1, w: [400, 500, 600, 700, 800, 900], i: 1 },
+  { f: 'Libre Baskerville', c: 'serif', cyr: 0, w: [400, 700], i: 1, iw: [400] },
+  { f: 'JetBrains Mono', c: 'mono', cyr: 1, w: [300, 400, 500, 600, 700, 800], i: 1 },
+  { f: 'Fira Code', c: 'mono', cyr: 1, w: [300, 400, 500, 600, 700], i: 0 },
+  { f: 'IBM Plex Mono', c: 'mono', cyr: 1, w: [300, 400, 500, 600, 700], i: 1 },
+  { f: 'Source Code Pro', c: 'mono', cyr: 1, w: [300, 400, 500, 600, 700, 800], i: 1 },
+  { f: 'Space Mono', c: 'mono', cyr: 0, w: [400, 700], i: 1 },
+  { f: 'Lobster', c: 'display', cyr: 1, w: [400], i: 0 },
+  { f: 'Comfortaa', c: 'display', cyr: 1, w: [300, 400, 500, 600, 700], i: 0 },
+  { f: 'Abril Fatface', c: 'display', cyr: 0, w: [400], i: 0 },
+  { f: 'Unbounded', c: 'display', cyr: 1, w: [300, 400, 500, 600, 700, 800], i: 0 },
+  { f: 'Caveat', c: 'hand', cyr: 1, w: [400, 500, 600, 700], i: 0 },
+  { f: 'Marck Script', c: 'hand', cyr: 1, w: [400], i: 0 },
+  { f: 'Pacifico', c: 'hand', cyr: 1, w: [400], i: 0 },
+  { f: 'Amatic SC', c: 'hand', cyr: 1, w: [400, 700], i: 0 },
+  { f: 'Dancing Script', c: 'hand', cyr: 0, w: [400, 500, 600, 700], i: 0 },
+];
+const BY_NAME = Object.fromEntries(FONTS.map(x => [x.f, x]));
+const CATS = [['all', 'All'], ['serif', 'Serif'], ['sans', 'Sans'], ['mono', 'Mono'], ['display', 'Display'], ['hand', 'Handwriting']];
+const CAT_LABEL = { serif: 'Serif', sans: 'Sans', mono: 'Mono', display: 'Display', hand: 'Handwriting' };
+const WEIGHT_NAME = { 300: 'Light', 400: 'Regular', 500: 'Medium', 600: 'Semibold', 700: 'Bold', 800: 'Extrabold', 900: 'Black' };
+
+// One <link> per family, so a bad entry cannot break the others.
+function cssUrl(x) {
+  const fam = 'family=' + x.f.replace(/ /g, '+');
+  if (x.w.length === 1 && x.w[0] === 400 && !x.i) return 'https://fonts.googleapis.com/css2?' + fam + '&display=swap';
+  if (!x.i) return `https://fonts.googleapis.com/css2?${fam}:wght@${x.w.join(';')}&display=swap`;
+  const tuples = x.w.map(w => '0,' + w).concat((x.iw || x.w).map(w => '1,' + w));
+  return `https://fonts.googleapis.com/css2?${fam}:ital,wght@${tuples.join(';')}&display=swap`;
+}
+for (const x of FONTS) {
+  const l = document.createElement('link');
+  l.rel = 'stylesheet'; l.href = cssUrl(x);
+  document.head.appendChild(l);
+}
+
+// ---------- Slots ----------
+// role: the root default when nothing up the chain is set. own: style the slot adds to what it inherits.
+const SLOTS = {
+  text: { name: 'Text', desc: 'Notes in editing and reading view', role: 'text' },
+  'text.italic': { name: 'Italic', desc: '*emphasis*', parent: 'text', own: { i: 1 } },
+  'text.bold': { name: 'Bold', desc: '**strong**', parent: 'text', own: { w: 700 } },
+  'text.boldItalic': { name: 'Bold italic', desc: '***both***', parent: 'text' }, // parent picked at runtime
+  headings: { name: 'Headings', desc: 'All heading levels', parent: 'text', own: { w: 700 } },
+  h1: { name: 'H1', parent: 'headings' }, h2: { name: 'H2', parent: 'headings' }, h3: { name: 'H3', parent: 'headings' },
+  h4: { name: 'H4', parent: 'headings' }, h5: { name: 'H5', parent: 'headings' }, h6: { name: 'H6', parent: 'headings' },
+  interface: { name: 'Interface', desc: 'Menus, sidebars, tabs, this settings window', role: 'text' },
+  mono: { name: 'Monospace', desc: 'Code, frontmatter, tables in source mode', role: 'mono' },
+  'mono.inline': { name: 'Inline code', desc: '`code` inside a paragraph', parent: 'mono' },
+  'mono.block': { name: 'Code blocks', desc: 'Fenced ``` blocks', parent: 'mono' },
+};
+const AREAS = [
+  { id: 'text', kids: ['text.italic', 'text.bold', 'text.boldItalic'], summary: 'Italic, bold, bold italic' },
+  { id: 'headings', kids: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'], summary: 'Each level H1 to H6' },
+  { id: 'interface', kids: [] },
+  { id: 'mono', kids: ['mono.inline', 'mono.block'], summary: 'Inline code, code blocks' },
+];
+const PRESETS = {
+  empty: {},
+  broad: { text: { f: 'Literata', w: 400, i: 0 } },
+  precise: {
+    text: { f: 'Literata', w: 400, i: 0 },
+    'text.italic': { f: 'Lora', w: 400, i: 1 },
+    'text.bold': { f: 'Literata', w: 600, i: 0 },
+    headings: { f: 'Playfair Display', w: 700, i: 0 },
+    h1: { f: 'Playfair Display', w: 900, i: 0 },
+    interface: { f: 'Golos Text', w: 400, i: 0 },
+    mono: { f: 'JetBrains Mono', w: 400, i: 0 },
+    'mono.block': { f: 'IBM Plex Mono', w: 400, i: 0 },
+  },
+};
+
+const params = new URLSearchParams(location.search);
+const state = {
+  values: structuredClone(PRESETS[params.get('preset')] || PRESETS.broad),
+  open: new Set((params.get('open') ?? (params.get('preset') === 'precise' ? 'text,headings,mono' : 'text')).split(',').filter(Boolean)),
+  lang: params.get('lang') === 'en' ? 'en' : 'ru',
+};
+
+function parentOf(id) {
+  if (id === 'text.boldItalic') {
+    if (state.values['text.bold']) return 'text.bold';
+    if (state.values['text.italic']) return 'text.italic';
+    return 'text';
+  }
+  return SLOTS[id].parent || null;
+}
+function ownOf(id) {
+  if (id === 'text.boldItalic') {
+    const p = parentOf(id);
+    return p === 'text.bold' ? { i: 1 } : p === 'text.italic' ? { w: 700 } : { w: 700, i: 1 };
+  }
+  return SLOTS[id].own || {};
+}
+function nearestWeight(font, w) {
+  if (!font) return w;
+  return font.w.reduce((a, b) => Math.abs(b - w) < Math.abs(a - w) ? b : a);
+}
+// Resolved font: { f (null = Obsidian default), w, i, from (slot that supplied the family or null) }
+function resolve(id) {
+  const v = state.values[id];
+  if (v) return { ...v, from: id };
+  const p = parentOf(id);
+  const own = ownOf(id);
+  const base = p ? resolve(p) : { f: null, w: 400, i: 0, from: null, role: SLOTS[id].role };
+  const w = own.w ?? base.w;
+  return { f: base.f, w: base.f ? nearestWeight(BY_NAME[base.f], w) : w, i: own.i ?? base.i, from: base.from, role: base.role, wantW: w };
+}
+function stack(r) {
+  const fallback = r.role === 'mono' ? 'var(--font-monospace-default)' : 'var(--font-default)';
+  return r.f ? `"${r.f}", ${fallback}` : fallback;
+}
+function fontCss(r) {
+  return `font-family:${stack(r)};font-weight:${r.w};font-style:${r.i ? 'italic' : 'normal'}`;
+}
+function styleName(r) {
+  const n = WEIGHT_NAME[r.w] || r.w;
+  return r.i ? (r.w === 400 ? 'Italic' : n + ' italic') : n;
+}
+// A style the family cannot draw: the browser fakes it. Shown so the user knows why it looks off.
+function fakeNote(r) {
+  const x = r.f && BY_NAME[r.f];
+  if (!x) return '';
+  if (r.i && !x.i) return 'slanted, no true italic';
+  if (r.wantW && r.wantW > r.w + 100) return `no ${r.wantW} weight`;
+  return '';
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+const ICON_RESET = '<svg class="icon" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>';
+const ICON_CHEV = '<svg class="icon" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>';
+
+function fontButton(id) {
+  const r = resolve(id);
+  const set = !!state.values[id];
+  const fam = r.f || 'Obsidian default';
+  // Where an empty slot inherits from is said in its description, so the button only names the style.
+  let meta = styleName(r);
+  const fake = fakeNote(r);
+  if (fake) meta += ` · ${fake}`;
+  return `<button class="ft-font-btn ${set ? '' : 'is-inherited'}" data-pick="${id}" aria-label="${esc(SLOTS[id].name)} font: ${esc(fam)} ${esc(meta)}. Change"
+    title="${esc(fam + ' · ' + meta)}"><span class="ft-family" style="${fontCss(r)}">${esc(fam)}</span><span class="ft-style">${esc(meta)}</span></button>
+    <button class="clickable-icon" data-reset="${id}" aria-label="Reset ${esc(SLOTS[id].name)}" title="Reset ${esc(SLOTS[id].name)}" ${set ? '' : 'hidden'}>${ICON_RESET}</button>`;
+}
+function slotRole(id) { let s = id; while (SLOTS[s].parent) s = SLOTS[s].parent; return SLOTS[s].role; }
+function inheritDesc(id) {
+  if (state.values[id]) return SLOTS[id].desc || '';
+  const p = parentOf(id);
+  return p ? `Empty, uses ${SLOTS[p].name}` : 'Empty, uses Obsidian\'s font';
+}
+
+function renderSlots() {
+  const html = AREAS.map(a => {
+    const setKids = a.kids.filter(k => state.values[k]).length;
+    const open = state.open.has(a.id);
+    const expander = a.kids.length ? `<button class="ft-expander" data-toggle="${a.id}" aria-expanded="${open}" aria-controls="kids-${a.id}">${ICON_CHEV}${a.summary}${setKids ? ` · <span class="ft-count">${setKids} set</span>` : ''}</button>` : '';
+    const parentLine = SLOTS[a.id].parent && !state.values[a.id] ? `Empty, uses ${SLOTS[SLOTS[a.id].parent].name}` : SLOTS[a.id].desc;
+    const kids = a.kids.map(k => `
+      <div class="ft-child" data-row="${k}">
+        <div class="setting-item-info">
+          <div class="setting-item-name">${state.values[k] ? '<span class="ft-dot"></span>' : ''}${SLOTS[k].name}</div>
+          <div class="setting-item-description">${esc(inheritDesc(k))}</div>
+        </div>
+        <div class="setting-item-control">${fontButton(k)}</div>
+      </div>`).join('');
+    return `<div class="ft-area ${open ? 'is-open' : ''}" data-area="${a.id}">
+      <div class="setting-item" data-row="${a.id}">
+        <div class="setting-item-info">
+          <div class="setting-item-name">${state.values[a.id] ? '<span class="ft-dot"></span>' : ''}${SLOTS[a.id].name}</div>
+          <div class="setting-item-description">${esc(parentLine)}</div>
+          ${expander ? `<div style="padding-top:6px">${expander}</div>` : ''}
+        </div>
+        <div class="setting-item-control">${fontButton(a.id)}</div>
+      </div>
+      ${a.kids.length ? `<div class="ft-children" id="kids-${a.id}">${kids}</div>` : ''}
+    </div>`;
+  }).join('');
+  document.getElementById('slots').innerHTML = html;
+  const n = Object.keys(state.values).length;
+  document.getElementById('reset-all').disabled = n === 0;
+  document.getElementById('reset-all-desc').textContent = n === 0
+    ? 'Nothing is overridden. Obsidian uses its own fonts.'
+    : `Clears ${n} override${n === 1 ? '' : 's'} and gives the fonts back to Obsidian. Downloaded font files stay in the vault.`;
+}
+
+// ---------- Sample note ----------
+const NOTE = {
+  ru: {
+    crumb: ['Заметки', 'Дневник шрифтов'],
+    h1: 'Дневник шрифтов',
+    p1: ['Обычный текст абзаца, ', 'курсив для оттенков', ', ', 'жирный для главного', ' и ', 'жирный курсив', ', когда очень нужно. Команда ', 'npm run build', ' собирает плагин.'],
+    h2: 'Заголовок второго уровня', p2: 'Длинный абзац проверяет ритм строки: Ёлка, щука, съешь же ещё этих мягких французских булок.',
+    h3: 'Третий уровень',
+    code: ['<span class="c">// Шрифт для кода</span>', '<span class="k">const</span> font = <span class="s">"моноширинный"</span>;', 'console.log(<span class="s">`Привет, ${font}`</span>);'],
+  },
+  en: {
+    crumb: ['Notes', 'Font diary'],
+    h1: 'Font diary',
+    p1: ['Body text of a paragraph, ', 'italic for nuance', ', ', 'bold for the point', ' and ', 'bold italic', ' when it really matters. Run ', 'npm run build', ' to bundle the plugin.'],
+    h2: 'A second-level heading', p2: 'A longer paragraph shows the rhythm of the line: the quick brown fox jumps over the lazy dog.',
+    h3: 'Third level',
+    code: ['<span class="c">// Font for code</span>', '<span class="k">const</span> font = <span class="s">"monospace"</span>;', 'console.log(<span class="s">`Hello, ${font}`</span>);'],
+  },
+};
+function renderNote() {
+  const t = NOTE[state.lang];
+  const p = t.p1;
+  document.getElementById('note').innerHTML = `
+    <div class="note-tabbar" data-slot="interface">${t.crumb[0]} / <span class="crumb-cur">${t.crumb[1]}</span></div>
+    <div class="note-body">
+      <h1 data-slot="h1">${t.h1}</h1>
+      <p><span data-slot="text">${p[0]}</span><em data-slot="text.italic">${p[1]}</em><span data-slot="text">${p[2]}</span><strong data-slot="text.bold">${p[3]}</strong><span data-slot="text">${p[4]}</span><strong data-slot="text.boldItalic"><em>${p[5]}</em></strong><span data-slot="text">${p[6]}</span><code class="inline" data-slot="mono.inline">${p[7]}</code><span data-slot="text">${p[8]}</span></p>
+      <h2 data-slot="h2">${t.h2}</h2>
+      <p data-slot="text">${t.p2}</p>
+      <h3 data-slot="h3">${t.h3}</h3>
+      <pre data-slot="mono.block">${t.code.join('\n')}</pre>
+    </div>`;
+  document.querySelectorAll('.seg [data-lang]').forEach(b => b.setAttribute('aria-pressed', b.dataset.lang === state.lang));
+  applyFonts();
+}
+function applyFonts() {
+  document.querySelectorAll('#note [data-slot]').forEach(el => {
+    const id = el.dataset.slot;
+    const r = resolve(id);
+    el.style.cssText = fontCss(r);
+    el.title = `${SLOTS[id].name}: ${r.f || 'Obsidian default'} ${styleName(r)}`;
+    el.setAttribute('tabindex', '0');
+    el.setAttribute('role', 'button');
+  });
+  // The plugin's real output: three Obsidian variables. The mockup window uses them too.
+  const root = document.documentElement.style;
+  root.setProperty('--font-interface', stack(resolve('interface')));
+  root.setProperty('--font-text', stack(resolve('text')));
+  root.setProperty('--font-monospace', stack({ ...resolve('mono'), role: 'mono' }));
+}
+// Elements a slot currently controls: walk up from the element's slot until a set slot stops the chain.
+function controls(slot, elSlot) {
+  let s = elSlot;
+  while (s) {
+    if (s === slot) return true;
+    if (state.values[s]) return false;
+    s = parentOf(s);
+  }
+  return false;
+}
+function highlight(slot) {
+  document.querySelectorAll('#note [data-slot]').forEach(el => el.classList.toggle('is-hl', !!slot && controls(slot, el.dataset.slot)));
+  document.querySelectorAll('[data-row]').forEach(el => {
+    const on = el.dataset.row === slot;
+    (el.classList.contains('setting-item') ? el.parentElement : el).classList.toggle('is-hl', on);
+  });
+}
+
+function render() { renderSlots(); renderNote(); }
+
+// ---------- Notices ----------
+function notice(msg, undo) {
+  const n = document.createElement('div');
+  n.className = 'notice';
+  n.innerHTML = `<span>${esc(msg)}</span>${undo ? '<button>Undo</button>' : ''}`;
+  if (undo) n.querySelector('button').onclick = () => { undo(); n.remove(); };
+  document.getElementById('notices').appendChild(n);
+  setTimeout(() => n.remove(), 6000);
+}
+
+// ---------- Picker ----------
+const pk = { slot: null, cat: 'all', cyr: true, q: '', sel: null, w: 400, i: 0, sampleTouched: false, returnFocus: null };
+const $ = id => document.getElementById(id);
+
+function defaultSample() {
+  const mono = slotRole(pk.slot) === 'mono';
+  if (mono) return pk.cyr ? 'const имя = "Привет"; // 0O 1lI {}' : 'const name = "Hello"; // 0O 1lI {}';
+  return pk.cyr ? 'Съешь же ещё этих мягких французских булок' : 'The quick brown fox jumps over the lazy dog';
+}
+function openPicker(slot, opts = {}) {
+  pk.slot = slot;
+  pk.returnFocus = document.activeElement;
+  const cur = state.values[slot];
+  const r = resolve(slot);
+  pk.sel = cur ? cur.f : (r.f || null);
+  pk.w = r.w; pk.i = r.i;
+  pk.cat = opts.cat || (slotRole(slot) === 'mono' ? 'mono' : 'all');
+  pk.q = opts.q || '';
+  pk.sampleTouched = false;
+  $('picker-title').textContent = `Font for ${SLOTS[slot].name}`;
+  const p = parentOf(slot);
+  const pr = p ? resolve(p) : null;
+  $('picker-sub').textContent = cur
+    ? `Now ${cur.f} ${styleName(cur)}.` + (p ? ` Clearing it falls back to ${SLOTS[p].name}: ${pr.f || 'Obsidian default'}.` : ' Clearing it gives the slot back to Obsidian.')
+    : (p ? `Empty now, so it uses ${SLOTS[p].name}: ${pr.f || 'Obsidian default'} ${styleName(r)}.` : 'Empty now, so Obsidian\'s own font is used.');
+  $('picker-search').value = pk.q;
+  $('picker-search').placeholder = `Search ${FONTS.length} fonts`;
+  $('picker-sample').value = defaultSample();
+  $('picker-clear').textContent = cur ? `Clear, use ${p ? SLOTS[p].name : 'Obsidian default'}` : '';
+  $('picker-clear').hidden = !cur;
+  $('picker-container').classList.add('is-open');
+  renderPicker();
+  $('picker-search').focus();
+  scrollSelectedIntoView();
+}
+function closePicker() {
+  $('picker-container').classList.remove('is-open');
+  if (pk.returnFocus && document.contains(pk.returnFocus)) pk.returnFocus.focus();
+}
+function filtered() {
+  const q = pk.q.trim().toLowerCase();
+  return FONTS.filter(x => (pk.cat === 'all' || x.c === pk.cat) && (!pk.cyr || x.cyr) && (!q || x.f.toLowerCase().includes(q)));
+}
+function renderPicker() {
+  $('picker-cats').innerHTML = CATS.map(([id, label]) => `<button class="chip" data-cat="${id}" aria-pressed="${pk.cat === id}">${label}</button>`).join('');
+  const t = $('cyr-toggle');
+  t.classList.toggle('is-enabled', pk.cyr);
+  t.setAttribute('aria-checked', pk.cyr);
+  const list = filtered();
+  const sample = esc($('picker-sample').value || defaultSample());
+  const current = state.values[pk.slot]?.f;
+  $('font-list').innerHTML = list.length ? list.map(x => {
+    const styles = `${x.w.length} weight${x.w.length > 1 ? 's' : ''}${x.i ? ', italic' : ''}`;
+    const w = nearestWeight(x, pk.w);
+    return `<button class="font-row ${pk.sel === x.f ? 'is-selected' : ''} ${current === x.f ? 'is-current' : ''}" role="option" aria-selected="${pk.sel === x.f}" data-font="${esc(x.f)}">
+      <div class="font-row-meta"><b>${esc(x.f)}</b><span class="tags">${CAT_LABEL[x.c]} · ${styles}${x.cyr ? ' · Cyrillic' : ''}</span></div>
+      <div class="font-row-sample" style="font-family:'${x.f}', var(--font-default);font-weight:${w};font-style:${pk.i ? 'italic' : 'normal'}">${sample}</div>
+    </button>`;
+  }).join('') : `<div class="list-empty">No fonts match${pk.q ? ` “${esc(pk.q)}”` : ''}${pk.cat !== 'all' ? ` in ${CAT_LABEL[pk.cat]}` : ''}${pk.cyr ? ' with Cyrillic' : ''}.<br>
+      ${pk.cyr ? '<button class="mod-plain" data-act="cyr-off">Show fonts without Cyrillic</button>' : pk.cat !== 'all' ? '<button class="mod-plain" data-act="cat-all">Search all categories</button>' : ''}</div>`;
+  renderStyleRow();
+}
+function renderStyleRow() {
+  const x = BY_NAME[pk.sel];
+  const apply = $('picker-apply');
+  if (!x) {
+    $('style-row').innerHTML = `<span>Choose a font above.</span>`;
+    apply.disabled = true; apply.textContent = 'Use font';
+    return;
+  }
+  pk.w = nearestWeight(x, pk.w);
+  const weights = x.w.map(w => `<button data-w="${w}" aria-pressed="${pk.w === w}" title="${WEIGHT_NAME[w]}" style="font-family:'${x.f}';font-weight:${w};font-style:${pk.i ? 'italic' : 'normal'}">${w}</button>`).join('');
+  const italicOk = x.i && (!x.iw || x.iw.includes(pk.w));
+  const note = pk.i && !italicOk ? (x.i ? `No italic at ${pk.w}. Obsidian would slant it.` : 'No true italic. Obsidian would slant the upright.') : '';
+  $('style-row').innerHTML = `<span>Weight</span><div class="weights" role="group" aria-label="Weight">${weights}</div>
+    <label class="toggle-label" style="margin-left:0" id="ital-label">Italic <button class="checkbox-container ${pk.i ? 'is-enabled' : ''}" id="ital-toggle" role="switch" aria-checked="${!!pk.i}" aria-labelledby="ital-label"></button></label>
+    ${note ? `<span class="style-note">${note}</span>` : ''}`;
+  apply.disabled = false;
+  apply.textContent = `Use ${x.f} ${styleName({ w: pk.w, i: pk.i })}`;
+}
+function scrollSelectedIntoView() {
+  const el = document.querySelector('.font-row.is-selected');
+  if (el) el.scrollIntoView({ block: 'nearest' });
+}
+function applyPick() {
+  if (!BY_NAME[pk.sel]) return;
+  const prev = state.values[pk.slot];
+  state.values[pk.slot] = { f: pk.sel, w: pk.w, i: pk.i ? 1 : 0 };
+  const slot = pk.slot;
+  closePicker();
+  render();
+  notice(`${SLOTS[slot].name}: ${pk.sel} ${styleName({ w: pk.w, i: pk.i })}`, () => {
+    if (prev) state.values[slot] = prev; else delete state.values[slot];
+    render();
+  });
+}
+
+// ---------- Events ----------
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-pick],[data-reset],[data-toggle],[data-lang],[data-cat],[data-font],[data-w],[data-act],#cyr-toggle,#ital-toggle,#note [data-slot]');
+  if (!t) return;
+  if (t.dataset.pick) openPicker(t.dataset.pick);
+  else if (t.dataset.reset) {
+    const id = t.dataset.reset, prev = state.values[id];
+    delete state.values[id];
+    render();
+    notice(`${SLOTS[id].name} reset`, () => { state.values[id] = prev; render(); });
+  }
+  else if (t.dataset.toggle) {
+    const id = t.dataset.toggle;
+    state.open.has(id) ? state.open.delete(id) : state.open.add(id);
+    renderSlots();
+  }
+  else if (t.dataset.lang) { state.lang = t.dataset.lang; renderNote(); }
+  else if (t.dataset.cat) { pk.cat = t.dataset.cat; renderPicker(); }
+  else if (t.dataset.font) { pk.sel = t.dataset.font; renderPicker(); }
+  else if (t.dataset.w) { pk.w = +t.dataset.w; renderPicker(); }
+  else if (t.dataset.act === 'cyr-off') { pk.cyr = false; if (!pk.sampleTouched) $('picker-sample').value = defaultSample(); renderPicker(); }
+  else if (t.dataset.act === 'cat-all') { pk.cat = 'all'; renderPicker(); }
+  else if (t.id === 'cyr-toggle') { e.preventDefault(); pk.cyr = !pk.cyr; if (!pk.sampleTouched) $('picker-sample').value = defaultSample(); renderPicker(); }
+  else if (t.id === 'ital-toggle') { e.preventDefault(); pk.i = pk.i ? 0 : 1; renderPicker(); }
+  else if (t.dataset.slot) { const id = t.dataset.slot; openArea(id); openPicker(id); }
+});
+function openArea(id) {
+  const a = AREAS.find(a => a.kids.includes(id));
+  if (a && !state.open.has(a.id)) { state.open.add(a.id); renderSlots(); }
+}
+document.addEventListener('keydown', e => {
+  const t = e.target;
+  if ((e.key === 'Enter' || e.key === ' ') && t.matches && t.matches('#note [data-slot]')) { e.preventDefault(); t.click(); return; }
+  if (!$('picker-container').classList.contains('is-open')) return;
+  if (e.key === 'Escape') { e.preventDefault(); closePicker(); }
+  else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    const list = filtered();
+    if (!list.length) return;
+    e.preventDefault();
+    const i = list.findIndex(x => x.f === pk.sel);
+    const n = e.key === 'ArrowDown' ? Math.min(list.length - 1, i + 1) : Math.max(0, i - 1);
+    pk.sel = list[n].f;
+    renderPicker(); scrollSelectedIntoView();
+  }
+  else if (e.key === 'Enter' && (t.id === 'picker-search' || t.id === 'picker-sample')) { e.preventDefault(); applyPick(); }
+});
+document.addEventListener('mouseover', e => {
+  const row = e.target.closest('[data-row]');
+  const el = e.target.closest('#note [data-slot]');
+  highlight(row ? row.dataset.row : el ? el.dataset.slot : null);
+});
+document.addEventListener('focusin', e => {
+  const row = e.target.closest('[data-row]');
+  if (row) highlight(row.dataset.row);
+});
+$('picker-search').addEventListener('input', e => { pk.q = e.target.value; renderPicker(); });
+$('picker-sample').addEventListener('input', () => { pk.sampleTouched = true; renderPicker(); });
+$('picker-cancel').onclick = closePicker;
+$('picker-close').onclick = closePicker;
+$('picker-bg').onclick = closePicker;
+$('picker-apply').onclick = applyPick;
+$('picker-clear').onclick = () => {
+  const id = pk.slot, prev = state.values[id];
+  delete state.values[id];
+  closePicker(); render();
+  notice(`${SLOTS[id].name} cleared`, () => { state.values[id] = prev; render(); });
+};
+$('reset-all').onclick = () => {
+  const prev = structuredClone(state.values);
+  const n = Object.keys(prev).length;
+  state.values = {};
+  render();
+  notice(`Reset ${n} override${n === 1 ? '' : 's'}`, () => { state.values = prev; render(); });
+};
+
+render();
+if (params.get('picker') && SLOTS[params.get('picker')]) {
+  openArea(params.get('picker'));
+  openPicker(params.get('picker'), { cat: params.get('cat') || undefined, q: params.get('q') || '' });
+}
+
+// Self-check of the fallback chain (open the console).
+(() => {
+  const saved = state.values;
+  state.values = structuredClone(PRESETS.precise);
+  console.assert(resolve('text.boldItalic').f === 'Literata' && resolve('text.boldItalic').w === 600 && resolve('text.boldItalic').i === 1, 'bold italic follows Bold');
+  console.assert(resolve('h2').f === 'Playfair Display' && resolve('h2').w === 700, 'H2 follows Headings');
+  console.assert(resolve('mono.inline').f === 'JetBrains Mono', 'inline code follows Monospace');
+  state.values = { text: { f: 'Lobster', w: 400, i: 0 } };
+  console.assert(resolve('text.bold').w === 400 && fakeNote(resolve('text.bold')) === 'no 700 weight', 'missing weight is flagged');
+  state.values = {};
+  console.assert(resolve('headings').f === null && resolve('interface').f === null, 'empty means Obsidian default');
+  state.values = saved;
+})();
+</script>
+</body>
+</html>
