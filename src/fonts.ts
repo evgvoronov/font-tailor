@@ -109,7 +109,7 @@ export class FaceSet {
 			this.faces.push({ doc, face });
 			return face;
 		} catch (e) {
-			console.warn('Font Tailor: bad font face', family, e);
+			console.error('Font Tailor: bad font face', family, e);
 			return null;
 		}
 	}

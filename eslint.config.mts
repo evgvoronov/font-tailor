@@ -1,4 +1,5 @@
 import obsidianmd from 'eslint-plugin-obsidianmd';
+import { DEFAULT_BRANDS } from 'eslint-plugin-obsidianmd/dist/lib/rules/ui/brands.js';
 import globals from 'globals';
 import { globalIgnores, defineConfig } from 'eslint/config';
 
@@ -29,6 +30,11 @@ export default defineConfig(
 		},
 	},
 	...obsidianmd.configs.recommended,
+	// "Google Fonts" is a product name; the brands option replaces the defaults, so extend them.
+	{
+		files: ['src/**'],
+		rules: { 'obsidianmd/ui/sentence-case': ['warn', { enforceCamelCaseLower: true, brands: [...DEFAULT_BRANDS, 'Google Fonts'] }] },
+	},
 	// Tests run in Node, not in Obsidian.
 	{ files: ['test/**'], rules: { 'obsidianmd/no-nodejs-modules': 'off' } },
 );
