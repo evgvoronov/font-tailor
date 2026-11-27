@@ -48,7 +48,7 @@ export async function loadCatalog(adapter: DataAdapter, path: string, force = fa
 	try {
 		if (await adapter.exists(path)) cached = JSON.parse(await adapter.read(path)) as CatalogFile;
 	} catch (e) {
-		console.warn('Font Tailor: unreadable catalog cache', e);
+		console.debug('Font Tailor: unreadable catalog cache', e);
 	}
 	if (cached && !force && Date.now() - cached.fetched < MAX_AGE) return cached.fonts;
 	try {

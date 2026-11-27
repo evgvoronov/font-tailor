@@ -25,10 +25,9 @@ export class FontTailorSettingTab extends PluginSettingTab {
 		// Listeners go on this child, so they are dropped with it on the next display().
 		const el = this.containerEl.createDiv('ft-tab');
 		const left = el.createDiv('ft-slots');
-		new Setting(left).setName('Fonts').setHeading();
 		left.createEl('p', {
 			cls: 'ft-intro',
-			text: 'Pick fonts from Google Fonts. An empty slot uses the slot it hangs under, so one font for Text already covers italic, bold and headings. Fonts are downloaded into the vault once and then work offline.',
+			text: 'Pick fonts from Google Fonts. An empty slot uses the slot it hangs under, so one font for text already covers italic, bold and headings. Fonts are downloaded into the vault once and then work offline.',
 		});
 		this.langs = new Setting(left)
 			.setName('My languages')

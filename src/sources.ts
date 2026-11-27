@@ -103,7 +103,7 @@ export async function scanVault(app: App, folders: string[]): Promise<FontInfo[]
 				const buf = await adapter.readBinary(file);
 				for (const meta of await readFontFile(bufferReader(buf), file)) found.push({ meta, path: file });
 			} catch (e) {
-				console.warn('Font Tailor: skipped', file, e);
+				console.debug('Font Tailor: skipped', file, e);
 			}
 		}
 		for (const sub of list.folders) await walk(sub);

@@ -1,7 +1,7 @@
 {
 	"name": "font-tailor",
-	"version": "0.0.1",
-	"description": "Obsidian plugin: pick Google Fonts and override fonts per area and per style",
+	"version": "1.0.0",
+	"description": "Pick Google Fonts or your own font files and override fonts per area and per style",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {

@@ -59,7 +59,7 @@ export class SourcesModal extends Modal {
 		let vaultInput = '';
 		new Setting(el)
 			.setName('Add a vault folder')
-			.addText((t) => t.setPlaceholder('Path in the vault, e.g. assets/type').onChange((v) => (vaultInput = v)))
+			.addText((t) => t.setPlaceholder('Path in the vault, for example assets/type').onChange((v) => (vaultInput = v)))
 			.addButton((b) => b.setButtonText('Add').onClick(async () => {
 				const dir = normalizePath(vaultInput.trim());
 				if (!dir || dir === '/') return;
