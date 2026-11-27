@@ -53,6 +53,16 @@ export const AREAS: { id: SlotId; kids: SlotId[]; summary?: string }[] = [
 	{ id: 'mono', kids: ['mono.inline', 'mono.block'], summary: 'Inline code, code blocks' },
 ];
 
+/** Where a font comes from. Google fonts are downloaded; the rest are used where they are. */
+export type Source = 'google' | 'vault' | 'folder' | 'system';
+
+/** One face of a local font: a vault path (vault) or an absolute path (folder). */
+export interface LocalFile {
+	path: string;
+	weight: number;
+	italic: boolean;
+}
+
 /** What the catalog knows about a family. */
 export interface FontInfo {
 	family: string;
@@ -61,6 +71,11 @@ export interface FontInfo {
 	weights: number[];
 	/** Weights that have a true italic. */
 	italics: number[];
+	/** Unset means Google. */
+	source?: Source;
+	files?: LocalFile[];
+	/** WOFF2 files whose scripts could not be read yet. */
+	unknownScripts?: boolean;
 }
 
 export type FontLookup = (family: string) => FontInfo | undefined;

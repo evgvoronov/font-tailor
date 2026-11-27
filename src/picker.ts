@@ -2,9 +2,10 @@ import { App, ButtonComponent, Modal, ToggleComponent } from 'obsidian';
 import { tuple } from './fonts';
 import type FontTailorPlugin from './main';
 import { keepsBlock, missingScripts, scriptsOf } from './scripts';
+import { SOURCE_LABEL } from './sources';
 import { FontInfo, SLOTS, SlotId, nearestWeight, parentOf, resolve, slotRole, styleName, weightName } from './slots';
 
-const CATS: [string, string][] = [['all', 'All'], ['serif', 'Serif'], ['sans', 'Sans'], ['mono', 'Mono'], ['display', 'Display'], ['hand', 'Handwriting']];
+const CATS: [string, string][] = [['all', 'All'], ['mine', 'My fonts'], ['serif', 'Serif'], ['sans', 'Sans'], ['mono', 'Mono'], ['display', 'Display'], ['hand', 'Handwriting']];
 const CAT_LABEL: Record<string, string> = Object.fromEntries(CATS);
 const PAGE = 60;
 
@@ -27,6 +28,7 @@ export class FontPicker extends Modal {
 	private applyBtn!: ButtonComponent;
 	private sampleEl!: HTMLTextAreaElement;
 	private rowObserver: IntersectionObserver | null = null;
+	private catalogFailed = false;
 	private mineToggle!: ToggleComponent;
 	private moreObserver: IntersectionObserver | null = null;
 
@@ -126,18 +128,22 @@ export class FontPicker extends Modal {
 		this.contentEl.empty();
 	}
 
+	/** Local fonts first (fewer, and the user put them there), then Google by popularity. */
 	private async loadFonts(retry = false): Promise<void> {
-		try {
-			this.fonts = await this.plugin.getCatalog(retry);
-		} catch (e) {
-			console.error('Font Tailor: catalog', e);
-			this.listEl.empty();
-			const empty = this.listEl.createDiv({ cls: 'ft-list-empty', text: 'Could not load the font list. Check the connection.' });
-			empty.createEl('br');
-			new ButtonComponent(empty).setButtonText('Try again').onClick(() => void this.loadFonts(true));
-			return;
-		}
-		this.sel = this.fonts.find((f) => f.family === this.selFamily) ?? null;
+		const [google, local] = await Promise.all([
+			this.plugin.getCatalog(retry).catch((e) => {
+				console.error('Font Tailor: catalog', e);
+				return null;
+			}),
+			this.plugin.getLocalFonts().catch((e) => {
+				console.error('Font Tailor: local fonts', e);
+				return [];
+			}),
+		]);
+		this.catalogFailed = !google;
+		this.fonts = [...local, ...(google ?? [])];
+		const source = this.selFamily ? this.plugin.info(this.selFamily)?.source ?? 'google' : null;
+		this.sel = this.fonts.find((f) => f.family === this.selFamily && (f.source ?? 'google') === source) ?? null;
 		this.renderList();
 		this.renderStyle();
 		this.scrollToSelected();
@@ -156,7 +162,7 @@ export class FontPicker extends Modal {
 		const q = this.query.trim().toLowerCase();
 		const mine = this.plugin.scripts;
 		return this.fonts.filter((f) =>
-			(this.cat === 'all' || f.category === this.cat) &&
+			(this.cat === 'all' || f.category === this.cat || (this.cat === 'mine' && (f.source ?? 'google') !== 'google')) &&
 			(!this.onlyMine || !missingScripts(f.subsets, mine).length) &&
 			(!q || f.family.toLowerCase().includes(q)));
 	}
@@ -180,6 +186,10 @@ export class FontPicker extends Modal {
 		this.listEl.empty();
 		this.list = this.filtered();
 		this.shown = 0;
+		if (this.catalogFailed) {
+			const note = this.listEl.createDiv({ cls: 'ft-list-note', text: 'Could not load Google Fonts. Check the connection. ' });
+			new ButtonComponent(note).setButtonText('Try again').onClick(() => void this.loadFonts(true));
+		}
 		if (this.list.length) {
 			this.appendRows();
 			return;
@@ -213,7 +223,9 @@ export class FontPicker extends Modal {
 			const meta = row.createDiv('ft-font-row-meta');
 			meta.createEl('b', { text: f.family });
 			const tags = meta.createSpan('ft-tags');
-			tags.appendText(`${CAT_LABEL[f.category] ?? f.category} · ${f.weights.length} weight${f.weights.length > 1 ? 's' : ''}${f.italics.length ? ', italic' : ''}`);
+			const cat = CAT_LABEL[f.category];
+			tags.appendText(`${cat ? `${cat} · ` : ''}${f.weights.length} weight${f.weights.length > 1 ? 's' : ''}${f.italics.length ? ', italic' : ''}`);
+			if (f.source && f.source !== 'google') tags.createSpan({ cls: 'ft-badge mod-source', text: SOURCE_LABEL[f.source] });
 			const missing = missingScripts(f.subsets, mine);
 			if (missing.length) tags.createSpan({ cls: 'ft-badge', text: `No ${missing.map((s) => s.name).join(', ')}` });
 			row.createDiv('ft-font-row-sample');
@@ -255,6 +267,11 @@ export class FontPicker extends Modal {
 	}
 
 	private loadPreview(f: FontInfo, weights: number[]): void {
+		if (f.source === 'system') return;
+		if (f.source && f.source !== 'google') {
+			this.plugin.preview.loadLocal(this.contentEl.doc, f.family, this.plugin.localFaces(f));
+			return;
+		}
 		const scripts = this.plugin.scripts;
 		this.plugin.preview.load(this.contentEl.doc, f.family, weights.map((w) => tuple(w, this.italic && f.italics.includes(w))), (label) => keepsBlock(label, scripts));
 	}

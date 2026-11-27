@@ -1,8 +1,9 @@
-import { App, ExtraButtonComponent, Menu, PluginSettingTab, Setting, setIcon } from 'obsidian';
+import { App, ExtraButtonComponent, Menu, Platform, PluginSettingTab, Setting, setIcon } from 'obsidian';
 import { fontCss } from './apply';
 import type FontTailorPlugin from './main';
 import { renderNote } from './note';
 import { FontPicker } from './picker';
+import { SourcesModal } from './sourcesModal';
 import { SCRIPTS, missingScripts, scriptsOf } from './scripts';
 import { AREAS, SLOTS, SlotId, controls, fakeNote, parentOf, resolve, styleName } from './slots';
 
@@ -12,6 +13,7 @@ export class FontTailorSettingTab extends PluginSettingTab {
 	private slotsEl: HTMLElement | null = null;
 	private noteEl: HTMLElement | null = null;
 	private langs: Setting | null = null;
+	private sourcesRow: Setting | null = null;
 	private resetAll: Setting | null = null;
 
 	constructor(app: App, private plugin: FontTailorPlugin) {
@@ -32,6 +34,9 @@ export class FontTailorSettingTab extends PluginSettingTab {
 			.setName('My languages')
 			.setTooltip('Scripts you write in. The picker checks fonts against them, the preview shows them, and downloads include them.')
 			.addButton((b) => b.setButtonText('Change').onClick((e) => this.languageMenu(e)));
+		this.sourcesRow = new Setting(left)
+			.setName('Font sources')
+			.addButton((b) => b.setButtonText('Manage').onClick(() => new SourcesModal(this.app, this.plugin).open()));
 		this.slotsEl = left.createDiv();
 		this.resetAll = new Setting(left).setName('Reset all overrides').addButton((b) =>
 			b.setButtonText('Reset all').setWarning().onClick(() => {
@@ -80,6 +85,11 @@ export class FontTailorSettingTab extends PluginSettingTab {
 
 	private renderLanguages(): void {
 		this.langs?.setDesc(scriptsOf(this.plugin.scripts).map((s) => s.name).join(', '));
+		const s = this.plugin.sources;
+		const parts = ['Google Fonts', `${s.vaultFolders.length} vault folder${s.vaultFolders.length === 1 ? '' : 's'}`];
+		if (s.deviceFolders.length) parts.push(`${s.deviceFolders.length} folder${s.deviceFolders.length === 1 ? '' : 's'} on this device`);
+		if (s.systemFonts && Platform.isDesktop) parts.push('installed fonts');
+		this.sourcesRow?.setDesc(parts.join(', '));
 	}
 
 	/** One script per item; each click toggles it. At least one stays chosen. */
@@ -149,7 +159,9 @@ export class FontTailorSettingTab extends PluginSettingTab {
 		// Warn on the slot that sets the font, not on every slot that inherits it.
 		const font = set && r.family ? info(r.family) : undefined;
 		const missing = font ? missingScripts(font.subsets, this.plugin.scripts) : [];
-		if (missing.length) {
+		const absent = set && r.family ? this.plugin.missing.get(r.family) : undefined;
+		if (absent) row.descEl.createDiv({ cls: 'ft-warn', text: `${absent}. Falls back to Obsidian's font.` });
+		else if (missing.length) {
 			const names = missing.map((s) => s.name).join(', ');
 			row.descEl.createDiv({ cls: 'ft-warn', text: `${names} ${missing.length === 1 ? 'falls' : 'fall'} back to another font` });
 		}

@@ -3,6 +3,8 @@ import { BodyFonts } from './apply';
 import { loadCatalog } from './catalog';
 import { FaceSet, FamilyFiles, PreviewFonts, downloadBlocks, fetchBlocks, tuple } from './fonts';
 import { defaultScripts, keepsBlock } from './scripts';
+import { FONT_FILE, IMPORT_FOLDER, SourceSettings, defaultSources, measureScripts, nodeFs, renders, scanDeviceFolders, scanSystem, scanVault } from './sources';
+import { readFontFile } from './fontfile';
 import { FontTailorSettingTab } from './settings';
 import { FontInfo, SLOT_IDS, SlotValues, nearestWeight, resolve } from './slots';
 
@@ -14,6 +16,7 @@ interface Data {
 	fonts: Record<string, FontInfo>;
 	files: Record<string, FamilyFiles>;
 	previewCollapsed?: boolean;
+	sources?: SourceSettings;
 }
 
 export default class FontTailorPlugin extends Plugin {
@@ -28,6 +31,11 @@ export default class FontTailorPlugin extends Plugin {
 	private syncing: Promise<void> = Promise.resolve();
 	/** Windows that get the fonts: main, popouts, and the settings window while it shows this tab. */
 	private docs = new Set<Document>();
+	private local: Promise<FontInfo[]> | null = null;
+	/** Folder fonts read once per session; FontFace needs the bytes. */
+	private buffers = new Map<string, ArrayBuffer | null>();
+	/** Family to why its font is not on this device. */
+	readonly missing = new Map<string, string>();
 
 	async onload() {
 		const saved = (await this.loadData()) as Partial<Data> | null;
@@ -63,6 +71,108 @@ export default class FontTailorPlugin extends Plugin {
 
 	get scripts(): string[] {
 		return this.data.scripts ?? defaultScripts([getLanguage(), ...navigator.languages]);
+	}
+
+	get sources(): SourceSettings {
+		return this.data.sources ?? defaultSources(this.app.vault.configDir);
+	}
+
+	async setSources(sources: SourceSettings): Promise<void> {
+		this.data.sources = sources;
+		this.local = null;
+		await this.saveData(this.data);
+		await this.getLocalFonts();
+		this.onChange?.();
+	}
+
+	/** Fonts from the vault, device folders and the system, scanned once per session or after a change. */
+	getLocalFonts(force = false): Promise<FontInfo[]> {
+		if (!this.local || force) {
+			this.local = this.scanLocal();
+			this.local.catch(() => (this.local = null));
+		}
+		return this.local;
+	}
+
+	private async scanLocal(): Promise<FontInfo[]> {
+		const s = this.sources;
+		const [vault, folders, system] = await Promise.all([
+			scanVault(this.app, s.vaultFolders),
+			scanDeviceFolders(s.deviceFolders),
+			s.systemFonts ? scanSystem() : Promise.resolve([]),
+		]);
+		const doc = this.app.workspace.containerEl.doc;
+		for (const f of [...vault, ...folders].filter((x) => x.unknownScripts)) {
+			const file = f.files?.[0];
+			const src = file && (f.source === 'vault' ? this.app.vault.adapter.getResourcePath(file.path) : this.readDeviceFile(file.path));
+			if (src) f.subsets = await measureScripts(doc, src);
+			f.unknownScripts = false;
+		}
+		const all = [...vault, ...folders, ...system];
+		// Keep stored entries of fonts in use up to date (new weights, moved files).
+		let changed = false;
+		for (const f of all) {
+			const used = this.data.fonts[f.family];
+			if (used && used.source === f.source && JSON.stringify(used) !== JSON.stringify(f)) {
+				this.data.fonts[f.family] = f;
+				changed = true;
+			}
+		}
+		if (changed) {
+			await this.saveData(this.data);
+			this.applyFonts();
+		}
+		return all;
+	}
+
+	/** Copies font files into the vault's import folder, then rescans. Returns how many were imported. */
+	async importFiles(files: File[]): Promise<number> {
+		const adapter = this.app.vault.adapter;
+		if (!(await adapter.exists(IMPORT_FOLDER))) await adapter.mkdir(IMPORT_FOLDER);
+		let n = 0;
+		for (const file of files) {
+			const target = normalizePath(`${IMPORT_FOLDER}/${file.name}`);
+			try {
+				if (!FONT_FILE.test(file.name)) throw new Error('not a font file');
+				const buf = await file.arrayBuffer();
+				// Rejects files that only look like fonts.
+				await readFontFile(async (o, l) => new Uint8Array(buf, o, Math.max(0, Math.min(l, buf.byteLength - o))), file.name);
+				if (await adapter.exists(target)) throw new Error('a file with this name is already there');
+				await adapter.writeBinary(target, buf);
+				n++;
+			} catch (e) {
+				new Notice(`Skipped ${file.name}: ${e instanceof Error ? e.message : String(e)}`);
+			}
+		}
+		if (!this.sources.vaultFolders.includes(IMPORT_FOLDER)) await this.setSources({ ...this.sources, vaultFolders: [...this.sources.vaultFolders, IMPORT_FOLDER] });
+		else await this.getLocalFonts(true);
+		this.onChange?.();
+		return n;
+	}
+
+	/** Font sources for the faces of a vault or folder font; src is null when the file is not on this device. */
+	localFaces(info: FontInfo): { src: string | ArrayBuffer | null; d: { style: string; weight: string; range: string } }[] {
+		return (info.files ?? []).map((file) => ({
+			src: info.source === 'vault' ? `url("${this.app.vault.adapter.getResourcePath(file.path)}")` : this.readDeviceFile(file.path),
+			d: { style: file.italic ? 'italic' : 'normal', weight: String(file.weight), range: '' },
+		}));
+	}
+
+	private readDeviceFile(path: string): ArrayBuffer | null {
+		if (!this.buffers.has(path)) {
+			const node = nodeFs();
+			let buf: ArrayBuffer | null = null;
+			try {
+				if (node) {
+					const b = node.fs.readFileSync(path);
+					buf = new Uint8Array(b).buffer;
+				}
+			} catch {
+				buf = null;
+			}
+			this.buffers.set(path, buf);
+		}
+		return this.buffers.get(path) ?? null;
 	}
 
 	get fontsDir(): string {
@@ -108,14 +218,39 @@ export default class FontTailorPlugin extends Plugin {
 	private applyFonts(): void {
 		this.faces.clear();
 		this.body.clear();
+		const before = JSON.stringify([...this.missing]);
+		this.missing.clear();
 		const adapter = this.app.vault.adapter;
+		const main = this.app.workspace.containerEl.doc;
 		for (const family of this.usedFamilies().keys()) {
-			for (const f of this.data.files[family]?.faces ?? []) {
-				const src = `url("${adapter.getResourcePath(f.file)}")${f.format ? ` format("${f.format}")` : ''}`;
-				for (const doc of this.docs) this.faces.add(doc, family, src, f);
+			const info = this.info(family);
+			const source = info?.source ?? 'google';
+			if (source === 'google') {
+				for (const f of this.data.files[family]?.faces ?? []) {
+					const src = `url("${adapter.getResourcePath(f.file)}")${f.format ? ` format("${f.format}")` : ''}`;
+					for (const doc of this.docs) this.faces.add(doc, family, src, f);
+				}
+			} else if (source === 'system') {
+				if (!nodeFs()) this.missing.set(family, 'Installed on another device');
+				else if (!renders(main, family, 'abcdefghijklmnopqrstuvwxyz')) this.missing.set(family, 'Not installed on this device');
+			} else if (info) {
+				for (const { src, d } of this.localFaces(info)) {
+					if (!src) {
+						this.missing.set(family, nodeFs() ? 'File not found on this device' : 'Added on another device');
+						continue;
+					}
+					for (const doc of this.docs) {
+						this.faces.add(doc, family, src, d)?.load().catch(() => {
+							if (this.missing.has(family)) return;
+							this.missing.set(family, 'Font file is missing from the vault');
+							this.onChange?.();
+						});
+					}
+				}
 			}
 		}
 		this.body.apply([...this.docs].map((d) => d.body), this.data.slots, this.info);
+		if (JSON.stringify([...this.missing]) !== before) this.onChange?.();
 	}
 
 	/** Family to the css2 tuples its slots need. */
@@ -143,6 +278,7 @@ export default class FontTailorPlugin extends Plugin {
 		const scripts = this.scripts;
 		let changed = false;
 		for (const [family, needed] of this.usedFamilies()) {
+			if ((this.info(family)?.source ?? 'google') !== 'google') continue;
 			const have = this.data.files[family];
 			const tuples = [...new Set([...(have?.tuples ?? []), ...needed])];
 			const wanted = [...new Set([...(have?.scripts ?? []), ...scripts])];

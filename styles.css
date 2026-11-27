@@ -427,6 +427,24 @@ button.ft-chip.is-active {
 	background: rgba(var(--color-orange-rgb), 0.15);
 	color: var(--text-warning);
 }
+.ft-badge.mod-source {
+	background: var(--background-modifier-hover);
+	color: var(--text-muted);
+}
+.ft-list-note {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+.ft-sources .modal-content.is-dragover {
+	outline: 2px dashed var(--interactive-accent);
+	outline-offset: 4px;
+	border-radius: var(--radius-m);
+}
+
 .ft-font-row-sample {
 	font-size: 22px;
 	line-height: 1.35;
