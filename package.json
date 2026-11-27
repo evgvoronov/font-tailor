@@ -11,6 +11,7 @@
 		"lint": "eslint ."
 	},
 	"keywords": [],
+	"author": "Evgenii Voronov",
 	"license": "MIT",
 	"devDependencies": {
 		"@eslint/js": "^9.39.4",

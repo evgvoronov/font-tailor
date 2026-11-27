@@ -4,7 +4,7 @@
 	"version": "0.0.1",
 	"minAppVersion": "1.0.0",
 	"description": "Pick free Google Fonts and override fonts per area (text, interface, monospace) and per style (bold, italic, headings).",
-	"author": "TODO: author name",
+	"author": "Evgenii Voronov",
 	"authorUrl": "",
 	"isDesktopOnly": false
 }
